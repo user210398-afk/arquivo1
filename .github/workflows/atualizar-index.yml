@@ -45,7 +45,7 @@ jobs:
               f.write(conteudo_atualizado)
           "
 
-      - name: 2. Gerar simulados.json
+      - name: 2. Gerar simulados.json com nomes amigáveis para exibição
         run: |
           python -c "
           import os, json, re
@@ -53,15 +53,15 @@ jobs:
           simulados = []
           for arq in sorted(os.listdir('.')):
               if arq.lower().endswith('.html') and arq.lower() != 'index.html':
-                  with open(arq, 'r', encoding='utf-8', errors='ignore') as f:
-                      html = f.read()
-                  
-                  match_titulo = re.search(r'<title>(.*?)</title>', html, re.IGNORECASE)
-                  titulo = match_titulo.group(1).strip() if match_titulo else arq
+                  nome_sem_ext = arq.replace('.html', '')
+                  partes = nome_sem_ext.split('-')
+
+                  # Formata cada parte do nome com letra maiúscula (ex: 'farmaco' -> 'Farmaco')
+                  titulo_formatado = ' '.join([p.upper() if len(p) <= 2 else p.capitalize() for p in partes])
 
                   simulados.append({
                       'arquivo': arq,
-                      'titulo': titulo
+                      'titulo_exibicao': titulo_formatado
                   })
 
           with open('simulados.json', 'w', encoding='utf-8') as f:
@@ -73,5 +73,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add index.html simulados.json
-          git commit -m "auto: sincroniza index.html e simulados.json [skip ci]" || echo "Sem alterações para salvar"
+          git commit -m "auto: sincroniza simulados [skip ci]" || echo "Sem alterações para salvar"
           git push
