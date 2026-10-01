@@ -1,15 +1,15 @@
-name: Sincronizar Simulados no Index
+name: Sincronizar Simulados e Manifesto
 
 on:
   push:
     paths:
-      - '*.html' # Dispara sempre que qualquer arquivo HTML for adicionado, renomeado ou editado
+      - '*.html'
 
 jobs:
-  atualizar-lista:
+  sincronizar:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Dá permissão para a Action fazer commit no repositório
+      contents: write
 
     steps:
       - name: Baixar o código do repositório
@@ -20,22 +20,19 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Mapear arquivos HTML e atualizar MEUS_ARQUIVOS_MANUAIS
+      - name: 1. Atualizar lista no index.html
         run: |
           python -c "
-          import os, re, json
+          import os, re
 
-          # 1. Mapeia todos os arquivos .html da raiz ignorando o index.html
           arquivos = [
               f for f in sorted(os.listdir('.')) 
               if f.lower().endswith('.html') and f.lower() != 'index.html'
           ]
 
-          # 2. Formata cada nome como uma string de array JS (com aspas e vírgula)
           linhas_js = [f\"      '{arq}'\" for arq in arquivos]
           bloco_novo = ',\n'.join(linhas_js)
 
-          # 3. Abre o index.html e substitui o conteúdo entre as marcações
           with open('index.html', 'r', encoding='utf-8') as f:
               conteudo = f.read()
 
@@ -48,10 +45,33 @@ jobs:
               f.write(conteudo_atualizado)
           "
 
-      - name: Salvar alterações no repositório (Git Commit)
+      - name: 2. Gerar simulados.json
+        run: |
+          python -c "
+          import os, json, re
+
+          simulados = []
+          for arq in sorted(os.listdir('.')):
+              if arq.lower().endswith('.html') and arq.lower() != 'index.html':
+                  with open(arq, 'r', encoding='utf-8', errors='ignore') as f:
+                      html = f.read()
+                  
+                  match_titulo = re.search(r'<title>(.*?)</title>', html, re.IGNORECASE)
+                  titulo = match_titulo.group(1).strip() if match_titulo else arq
+
+                  simulados.append({
+                      'arquivo': arq,
+                      'titulo': titulo
+                  })
+
+          with open('simulados.json', 'w', encoding='utf-8') as f:
+              json.dump(simulados, f, ensure_ascii=False, indent=2)
+          "
+
+      - name: Salvar alterações no repositório
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html
-          git commit -m "auto: sincronização automática dos simulados [skip ci]" || echo "Sem alterações para salvar"
+          git add index.html simulados.json
+          git commit -m "auto: sincroniza index.html e simulados.json [skip ci]" || echo "Sem alterações para salvar"
           git push
