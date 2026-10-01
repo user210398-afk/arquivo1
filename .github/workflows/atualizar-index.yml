@@ -1,12 +1,13 @@
-name: Sincronizar Simulados e Manifesto
+name: Organizar Pasta e Sincronizar Simulados
 
 on:
   push:
     paths:
       - '*.html'
+      - 'simulados/*.html'
 
 jobs:
-  sincronizar:
+  organizar-e-sincronizar:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -20,17 +21,33 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: 1. Atualizar lista no index.html
+      - name: Mover HTMLs para /simulados e atualizar index.html e simulados.json
         run: |
           python -c "
-          import os, re
+          import os, json, re, shutil
 
-          arquivos = [
-              f for f in sorted(os.listdir('.')) 
-              if f.lower().endswith('.html') and f.lower() != 'index.html'
+          PASTA_DESTINO = 'simulados'
+          
+          # 1. Garante que a pasta destino existe
+          if not os.path.exists(PASTA_DESTINO):
+              os.makedirs(PASTA_DESTINO)
+
+          # 2. Move qualquer arquivo .html da raiz (exceto o index.html) para a pasta /simulados
+          for arq in os.listdir('.'):
+              if arq.lower().endswith('.html') and arq.lower() != 'index.html' and os.path.isfile(arq):
+                  origem = arq
+                  destino = os.path.join(PASTA_DESTINO, arq)
+                  print(f'Movendo {origem} -> {destino}')
+                  shutil.move(origem, destino)
+
+          # 3. Lista todos os arquivos da pasta /simulados
+          arquivos_simulados = [
+              f for f in sorted(os.listdir(PASTA_DESTINO)) 
+              if f.lower().endswith('.html')
           ]
 
-          linhas_js = [f\"      '{arq}'\" for arq in arquivos]
+          # 4. Atualiza o index.html com o caminho completo 'simulados/nome-do-arquivo.html'
+          linhas_js = [f\"      '{PASTA_DESTINO}/{arq}'\" for arq in arquivos_simulados]
           bloco_novo = ',\n'.join(linhas_js)
 
           with open('index.html', 'r', encoding='utf-8') as f:
@@ -43,35 +60,27 @@ jobs:
 
           with open('index.html', 'w', encoding='utf-8') as f:
               f.write(conteudo_atualizado)
-          "
 
-      - name: 2. Gerar simulados.json com nomes amigáveis para exibição
-        run: |
-          python -c "
-          import os, json, re
+          # 5. Gerar o simulados.json atualizado
+          simulados_json = []
+          for arq in arquivos_simulados:
+              nome_sem_ext = arq.replace('.html', '')
+              partes = nome_sem_ext.split('-')
+              titulo_formatado = ' '.join([p.upper() if len(p) <= 2 else p.capitalize() for p in partes])
 
-          simulados = []
-          for arq in sorted(os.listdir('.')):
-              if arq.lower().endswith('.html') and arq.lower() != 'index.html':
-                  nome_sem_ext = arq.replace('.html', '')
-                  partes = nome_sem_ext.split('-')
-
-                  # Formata cada parte do nome com letra maiúscula (ex: 'farmaco' -> 'Farmaco')
-                  titulo_formatado = ' '.join([p.upper() if len(p) <= 2 else p.capitalize() for p in partes])
-
-                  simulados.append({
-                      'arquivo': arq,
-                      'titulo_exibicao': titulo_formatado
-                  })
+              simulados_json.append({
+                  'arquivo': f'{PASTA_DESTINO}/{arq}',
+                  'titulo_exibicao': titulo_formatado
+              })
 
           with open('simulados.json', 'w', encoding='utf-8') as f:
-              json.dump(simulados, f, ensure_ascii=False, indent=2)
+              json.dump(simulados_json, f, ensure_ascii=False, indent=2)
           "
 
       - name: Salvar alterações no repositório
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html simulados.json
-          git commit -m "auto: sincroniza simulados [skip ci]" || echo "Sem alterações para salvar"
+          git add .
+          git commit -m "auto: reorganiza simulados na pasta /simulados e atualiza index [skip ci]" || echo "Sem alterações para salvar"
           git push
