@@ -704,7 +704,7 @@
     <!-- BARRA LATERAL (SIDEBAR) -->
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <i class="ph-fill ph-stethoscope"></i> MedHub
+        <i class="ph-fill ph-stethoscope"></i> MedSim
       </div>
       <div class="nav-menu">
         <button class="nav-item active" onclick="voltarParaInicio()"><i class="ph-duotone ph-squares-four"></i> Início</button>
@@ -1894,9 +1894,9 @@
     }
 
     const scratchArea = document.getElementById('scratchpad-text');
-    scratchArea.value = localStorage.getItem('medhub_scratchpad') || '';
+    scratchArea.value = localStorage.getItem('medsim_scratchpad') || '';
     scratchArea.addEventListener('input', (e) => {
-      localStorage.setItem('medhub_scratchpad', e.target.value);
+      localStorage.setItem('medsim_scratchpad', e.target.value);
     });
 
     document.addEventListener("mousemove", (e) => {
