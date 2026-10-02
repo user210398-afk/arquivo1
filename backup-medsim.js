@@ -1,220 +1,100 @@
 (function () {
   'use strict';
 
-
   /* ============================================================
-     MEDSIM — BACKUP DOS MEUS DADOS
-     ============================================================
+     MEDSIM — BACKUP DOS MEUS DADOS v2
 
      Funções:
-
      1. Exportar backup
      2. Restaurar backup
      3. Ver último backup
      4. Limpar meus dados
 
-     O script trabalha somente com dados locais do MedSim.
-
-     NÃO modifica:
-     - arquivos HTML
-     - simulados
-     - outros sites
-     - outros dados do navegador
+     Esta versão mantém a lógica de segurança da V1 e aproxima
+     a interface visual do restante do Hub MedSim.
      ============================================================ */
 
+  const VERSION = 2;
+  const FORMAT = 'medsim-backup';
 
-  const VERSION = 1;
+  const LAST_EXPORT_KEY = 'medsim_backup_last_export_v1';
+  const RECOVERY_KEY = 'medsim_backup_recovery_v1';
 
-  const FORMAT =
-    'medsim-backup';
+  const BUTTON_ID = 'medsim-backup-button';
+  const MODAL_ID = 'medsim-backup-modal';
+  const STYLE_ID = 'medsim-backup-style-v2';
+  const FILE_INPUT_ID = 'medsim-backup-file';
 
+  const INTERNAL_KEYS = new Set([
+    LAST_EXPORT_KEY
+  ]);
 
-  const LAST_EXPORT_KEY =
-    'medsim_backup_last_export_v1';
-
-
-  const RECOVERY_KEY =
-    'medsim_backup_recovery_v1';
-
-
-  const BUTTON_ID =
-    'medsim-backup-button';
-
-
-  const MODAL_ID =
-    'medsim-backup-modal';
-
-
-  const STYLE_ID =
-    'medsim-backup-style';
-
-
-  const FILE_INPUT_ID =
-    'medsim-backup-file';
-
-
-
-  /* ============================================================
-     CHAVES INTERNAS
-
-     Estas não precisam entrar no backup.
-     ============================================================ */
-
-  const INTERNAL_KEYS =
-    new Set([
-
-      LAST_EXPORT_KEY
-
-    ]);
-
-
-
-  /* ============================================================
-     CHAVES ESPECÍFICAS DO HUB
-     ============================================================ */
-
-  const EXACT_KEYS =
-    new Set([
-
-      'simulados_concluidos',
-
-      'ultimo_acesso_simulado'
-
-    ]);
-
+  const EXACT_KEYS = new Set([
+    'simulados_concluidos',
+    'ultimo_acesso_simulado'
+  ]);
 
 
   /* ============================================================
      IDENTIFICA DADOS DO MEDSIM
      ============================================================ */
 
-  function isMedSimKey(
-    key
-  ) {
+  function isMedSimKey(key) {
 
-    if (
-      !key ||
-      INTERNAL_KEYS.has(
-        key
-      )
-    ) {
-
+    if (!key || INTERNAL_KEYS.has(key)) {
       return false;
     }
 
-
     return (
-
-      /^medsim_/i.test(
-        key
-      )
-
-      ||
-
-      /^simulado_/i.test(
-        key
-      )
-
-      ||
-
-      EXACT_KEYS.has(
-        key
-      )
-
+      /^medsim_/i.test(key) ||
+      /^simulado_/i.test(key) ||
+      EXACT_KEYS.has(key)
     );
   }
 
 
-
-  /* ============================================================
-     LISTAR CHAVES
-     ============================================================ */
-
   function listMedSimKeys() {
 
-    const keys =
-      [];
+    const keys = [];
 
-
-    for (
-      let i = 0;
-      i < localStorage.length;
-      i++
-    ) {
+    for (let i = 0; i < localStorage.length; i++) {
 
       const key =
-        localStorage.key(
-          i
-        );
+        localStorage.key(i);
 
-
-      if (
-        isMedSimKey(
-          key
-        )
-      ) {
-
-        keys.push(
-          key
-        );
+      if (isMedSimKey(key)) {
+        keys.push(key);
       }
     }
-
 
     return keys.sort();
   }
 
 
-
-  /* ============================================================
-     COLETAR DADOS
-     ============================================================ */
-
   function collectData() {
 
-    const data =
-      {};
+    const data = {};
 
+    listMedSimKeys().forEach(key => {
 
-    listMedSimKeys()
-      .forEach(
-        key => {
+      const value =
+        localStorage.getItem(key);
 
-          const value =
-            localStorage.getItem(
-              key
-            );
+      if (value !== null) {
+        data[key] = value;
+      }
 
-
-          if (
-            value !== null
-          ) {
-
-            /*
-             * Mantemos o valor exatamente
-             * como está armazenado.
-             */
-
-            data[key] =
-              value;
-          }
-
-        }
-      );
-
+    });
 
     return data;
   }
-
 
 
   /* ============================================================
      SNAPSHOT
      ============================================================ */
 
-  function makeSnapshot(
-    reason
-  ) {
+  function makeSnapshot(reason) {
 
     return {
 
@@ -231,8 +111,7 @@
         reason || 'manual',
 
       createdAt:
-        new Date()
-          .toISOString(),
+        new Date().toISOString(),
 
       data:
         collectData()
@@ -241,19 +120,7 @@
   }
 
 
-
-  /* ============================================================
-     RECUPERAÇÃO TEMPORÁRIA
-
-     Antes de restaurar ou apagar,
-     guardamos uma cópia na sessão atual.
-
-     Ela desaparece quando a aba é encerrada.
-     ============================================================ */
-
-  function saveRecovery(
-    reason
-  ) {
+  function saveRecovery(reason) {
 
     try {
 
@@ -262,11 +129,7 @@
         RECOVERY_KEY,
 
         JSON.stringify(
-
-          makeSnapshot(
-            reason
-          )
-
+          makeSnapshot(reason)
         )
 
       );
@@ -274,108 +137,57 @@
     } catch (error) {
 
       console.warn(
-
         '[MedSim] Não foi possível criar recuperação temporária.',
-
         error
-
       );
     }
   }
 
 
-
-  /* ============================================================
-     LIMPAR APENAS DADOS DO MEDSIM
-     ============================================================ */
-
   function clearTrackedData() {
 
-    listMedSimKeys()
-      .forEach(
-        key => {
+    listMedSimKeys().forEach(key => {
 
-          localStorage.removeItem(
-            key
-          );
+      localStorage.removeItem(key);
 
-        }
-      );
+    });
   }
 
 
-
-  /* ============================================================
-     RESTAURAR SNAPSHOT
-     ============================================================ */
-
-  function restoreSnapshot(
-    snapshot
-  ) {
+  function restoreSnapshot(snapshot) {
 
     clearTrackedData();
 
+    Object.entries(
+      snapshot.data || {}
+    )
+    .forEach(([key, value]) => {
 
-    Object
-      .entries(
-        snapshot.data || {}
-      )
+      if (
+        isMedSimKey(key) &&
+        typeof value === 'string'
+      ) {
 
-      .forEach(
-        ([key, value]) => {
+        localStorage.setItem(
+          key,
+          value
+        );
+      }
 
-          /*
-           * Segurança:
-           *
-           * mesmo que alguém modifique manualmente
-           * o JSON, só permitimos chaves do MedSim.
-           */
-
-          if (
-
-            isMedSimKey(
-              key
-            )
-
-            &&
-
-            typeof value ===
-              'string'
-
-          ) {
-
-            localStorage.setItem(
-              key,
-              value
-            );
-          }
-
-        }
-      );
+    });
   }
-
 
 
   /* ============================================================
      NOME DO ARQUIVO
      ============================================================ */
 
-  function filenameDate(
-    date
-  ) {
+  function filenameDate(date) {
 
     const pad =
       number =>
-
-        String(
-          number
-        )
-
-          .padStart(
-            2,
-            '0'
-          );
-
+        String(number)
+          .padStart(2, '0');
 
     return [
 
@@ -409,48 +221,37 @@
   }
 
 
-
   /* ============================================================
      DOWNLOAD
      ============================================================ */
 
-  function downloadJSON(
-    payload
-  ) {
+  function downloadJSON(payload) {
 
     const blob =
       new Blob(
 
         [
-
           JSON.stringify(
             payload,
             null,
             2
           )
-
         ],
 
         {
-
           type:
             'application/json;charset=utf-8'
-
         }
 
       );
 
 
     const url =
-      URL.createObjectURL(
-        blob
-      );
+      URL.createObjectURL(blob);
 
 
     const link =
-      document.createElement(
-        'a'
-      );
+      document.createElement('a');
 
 
     link.href =
@@ -469,9 +270,7 @@
 
 
     document.body
-      .appendChild(
-        link
-      );
+      .appendChild(link);
 
 
     link.click();
@@ -483,43 +282,33 @@
     setTimeout(
       function () {
 
-        URL.revokeObjectURL(
-          url
-        );
+        URL.revokeObjectURL(url);
 
       },
-
       1000
-
     );
   }
 
 
-
   /* ============================================================
-     1. EXPORTAR BACKUP
+     EXPORTAR
      ============================================================ */
 
   function exportBackup() {
 
     const snapshot =
-      makeSnapshot(
-        'export'
-      );
+      makeSnapshot('export');
 
 
     const payload = {
 
       ...snapshot,
 
-
       origin:
         location.origin,
 
-
       path:
         location.pathname,
-
 
       summary: {
 
@@ -536,15 +325,8 @@
     };
 
 
-    downloadJSON(
-      payload
-    );
+    downloadJSON(payload);
 
-
-    /*
-     * Registra quando o backup
-     * foi exportado.
-     */
 
     localStorage.setItem(
 
@@ -568,27 +350,20 @@
   }
 
 
-
   /* ============================================================
-     FORMATA DATA
+     DATA
      ============================================================ */
 
-  function formatDate(
-    iso
-  ) {
+  function formatDate(iso) {
 
-    if (
-      !iso
-    ) {
+    if (!iso) {
 
       return 'Nenhum backup exportado ainda';
     }
 
 
     const date =
-      new Date(
-        iso
-      );
+      new Date(iso);
 
 
     if (
@@ -619,19 +394,15 @@
   }
 
 
-
   /* ============================================================
-     VALIDAR ARQUIVO DE BACKUP
+     VALIDAR BACKUP
      ============================================================ */
 
-  function validateBackup(
-    raw
-  ) {
+  function validateBackup(raw) {
 
     if (
       !raw ||
-      typeof raw !==
-        'object'
+      typeof raw !== 'object'
     ) {
 
       throw new Error(
@@ -641,15 +412,8 @@
 
 
     if (
-
-      raw.format !==
-        FORMAT
-
-      ||
-
-      raw.app !==
-        'MedSim'
-
+      raw.format !== FORMAT ||
+      raw.app !== 'MedSim'
     ) {
 
       throw new Error(
@@ -662,14 +426,10 @@
 
     if (
 
-      !raw.data
-
-      ||
+      !raw.data ||
 
       typeof raw.data !==
-        'object'
-
-      ||
+        'object' ||
 
       Array.isArray(
         raw.data
@@ -685,52 +445,34 @@
     }
 
 
-
-    const data =
-      {};
+    const data = {};
 
 
-    /*
-     * Segurança:
-     *
-     * ignoramos qualquer chave estranha
-     * existente no JSON.
-     */
+    Object.entries(
+      raw.data
+    )
+    .forEach(([key, value]) => {
 
-    Object
-      .entries(
-        raw.data
-      )
+      if (
 
-      .forEach(
-        ([key, value]) => {
+        isMedSimKey(key)
 
-          if (
+        &&
 
-            isMedSimKey(
-              key
-            )
+        typeof value ===
+          'string'
 
-            &&
+      ) {
 
-            typeof value ===
-              'string'
+        data[key] = value;
+      }
 
-          ) {
-
-            data[key] =
-              value;
-          }
-
-        }
-      );
+    });
 
 
     if (
       !Object
-        .keys(
-          data
-        )
+        .keys(data)
         .length
     ) {
 
@@ -748,14 +490,9 @@
         FORMAT,
 
       version:
-
         Number(
           raw.version
-        )
-
-        ||
-
-        1,
+        ) || 1,
 
       app:
         'MedSim',
@@ -769,28 +506,16 @@
   }
 
 
-
   /* ============================================================
-     2. RESTAURAR BACKUP
+     RESTAURAR
      ============================================================ */
 
-  async function restoreFromFile(
-    file
-  ) {
+  async function restoreFromFile(file) {
 
-    if (
-      !file
-    ) {
-
+    if (!file) {
       return;
     }
 
-
-
-    /*
-     * Um localStorage normalmente é muito
-     * menor que isso.
-     */
 
     if (
       file.size >
@@ -805,10 +530,8 @@
 
       );
 
-
       return;
     }
-
 
 
     let parsed;
@@ -818,9 +541,7 @@
 
       parsed =
         JSON.parse(
-
           await file.text()
-
         );
 
     } catch (_) {
@@ -833,10 +554,8 @@
 
       );
 
-
       return;
     }
-
 
 
     let backup;
@@ -845,24 +564,17 @@
     try {
 
       backup =
-        validateBackup(
-          parsed
-        );
+        validateBackup(parsed);
 
     } catch (error) {
 
       showMessage(
-
         error.message,
-
         'error'
-
       );
-
 
       return;
     }
-
 
 
     const count =
@@ -872,7 +584,6 @@
           backup.data
         )
         .length;
-
 
 
     const date =
@@ -885,11 +596,6 @@
 
         : 'data não informada';
 
-
-
-    /*
-     * CONFIRMAÇÃO ANTES DA OPERAÇÃO
-     */
 
     const ok =
       window.confirm(
@@ -906,11 +612,7 @@
 
         +
 
-        `Os dados atuais do MedSim serão substituídos `
-
-        +
-
-        `pelos dados deste arquivo.\n\n`
+        `Os dados atuais do MedSim serão substituídos pelos dados deste arquivo.\n\n`
 
         +
 
@@ -919,19 +621,10 @@
       );
 
 
-    if (
-      !ok
-    ) {
-
+    if (!ok) {
       return;
     }
 
-
-
-    /*
-     * Guarda os dados atuais em memória
-     * e em sessionStorage antes de alterar.
-     */
 
     const current =
       makeSnapshot(
@@ -942,7 +635,6 @@
     saveRecovery(
       'before-restore'
     );
-
 
 
     try {
@@ -967,27 +659,17 @@
           location.reload();
 
         },
-
         500
-
       );
+
 
     } catch (error) {
 
       console.error(
-
         '[MedSim] Falha na restauração.',
-
         error
-
       );
 
-
-      /*
-       * Se algo der errado no meio,
-       * tentamos restaurar automaticamente
-       * os dados anteriores.
-       */
 
       try {
 
@@ -1009,9 +691,8 @@
   }
 
 
-
   /* ============================================================
-     4. LIMPAR MEUS DADOS
+     LIMPAR DADOS
      ============================================================ */
 
   function clearMyData() {
@@ -1021,9 +702,7 @@
         .length;
 
 
-    if (
-      !count
-    ) {
+    if (!count) {
 
       showMessage(
 
@@ -1033,15 +712,9 @@
 
       );
 
-
       return;
     }
 
-
-
-    /*
-     * PRIMEIRA CONFIRMAÇÃO
-     */
 
     const first =
       window.confirm(
@@ -1054,11 +727,7 @@
 
         +
 
-        `estatísticas, rascunhos, preferências e outros dados locais `
-
-        +
-
-        `do MedSim.\n\n`
+        `estatísticas, rascunhos, preferências e outros dados locais do MedSim.\n\n`
 
         +
 
@@ -1067,18 +736,10 @@
       );
 
 
-    if (
-      !first
-    ) {
-
+    if (!first) {
       return;
     }
 
-
-
-    /*
-     * SEGUNDA CONFIRMAÇÃO
-     */
 
     const second =
       window.confirm(
@@ -1092,23 +753,14 @@
       );
 
 
-    if (
-      !second
-    ) {
-
+    if (!second) {
       return;
     }
 
 
-
-    /*
-     * Segurança temporária antes da exclusão.
-     */
-
     saveRecovery(
       'before-clear'
     );
-
 
 
     try {
@@ -1134,10 +786,9 @@
           location.reload();
 
         },
-
         500
-
       );
+
 
     } catch (error) {
 
@@ -1161,9 +812,8 @@
   }
 
 
-
   /* ============================================================
-     CSS
+     ESTILOS
      ============================================================ */
 
   function injectStyle() {
@@ -1191,7 +841,7 @@
     style.textContent = `
 
       /* ======================================================
-         BOTÃO DO MENU
+         ITEM DO MENU
          ====================================================== */
 
       #${BUTTON_ID} {
@@ -1206,19 +856,31 @@
           center;
 
         gap:
-          10px;
+          11px;
+
+
+        min-height:
+          44px;
 
 
         padding:
           10px 12px;
 
 
+        margin:
+          2px 0;
+
+
+        box-sizing:
+          border-box;
+
+
         border:
-          0;
+          1px solid transparent;
 
 
         border-radius:
-          10px;
+          11px;
 
 
         background:
@@ -1226,11 +888,19 @@
 
 
         color:
-          inherit;
+
+          var(
+            --text-secondary,
+            #64748b
+          );
 
 
         font:
           inherit;
+
+
+        font-size:
+          .88rem;
 
 
         font-weight:
@@ -1243,10 +913,90 @@
 
         cursor:
           pointer;
+
+
+        transition:
+
+          background .16s ease,
+          color .16s ease,
+          border-color .16s ease,
+          transform .16s ease;
       }
 
 
       #${BUTTON_ID}:hover {
+
+        background:
+
+          rgba(
+            99,
+            102,
+            241,
+            .08
+          );
+
+
+        border-color:
+
+          rgba(
+            99,
+            102,
+            241,
+            .10
+          );
+
+
+        color:
+
+          var(
+            --purple-primary,
+            #6366f1
+          );
+      }
+
+
+      #${BUTTON_ID}:active {
+
+        transform:
+          scale(.99);
+      }
+
+
+      #${BUTTON_ID}
+      .medsim-backup-menu-icon {
+
+        flex:
+          0 0 auto;
+
+
+        display:
+          inline-flex;
+
+        align-items:
+          center;
+
+        justify-content:
+          center;
+
+
+        width:
+          30px;
+
+        height:
+          30px;
+
+
+        border-radius:
+          9px;
+
+
+        color:
+
+          var(
+            --purple-primary,
+            #6366f1
+          );
+
 
         background:
 
@@ -1259,12 +1009,22 @@
       }
 
 
+      #${BUTTON_ID}
+      .medsim-backup-menu-text {
+
+        overflow:
+          hidden;
+
+        text-overflow:
+          ellipsis;
+
+        white-space:
+          nowrap;
+      }
+
 
       /* ======================================================
          FALLBACK
-
-         Só é utilizado se o Hub não possuir
-         sidebar/nav-menu.
          ====================================================== */
 
       #${BUTTON_ID}.medsim-backup-fallback {
@@ -1286,6 +1046,10 @@
           auto;
 
 
+        padding-right:
+          16px;
+
+
         background:
 
           var(
@@ -1294,26 +1058,18 @@
           );
 
 
-        color:
-
-          var(
-            --text-primary,
-            #0f172a
-          );
-
-
         border:
 
           1px solid
           var(
             --border-color,
-            rgba(148,163,184,.28)
+            rgba(148,163,184,.24)
           );
 
 
         box-shadow:
 
-          0 8px 24px
+          0 10px 28px
           rgba(
             15,
             23,
@@ -1321,7 +1077,6 @@
             .12
           );
       }
-
 
 
       /* ======================================================
@@ -1353,7 +1108,11 @@
 
 
         padding:
-          18px;
+          20px;
+
+
+        box-sizing:
+          border-box;
 
 
         background:
@@ -1367,7 +1126,10 @@
 
 
         backdrop-filter:
-          blur(5px);
+          blur(6px);
+
+        -webkit-backdrop-filter:
+          blur(6px);
       }
 
 
@@ -1380,9 +1142,8 @@
       }
 
 
-
       /* ======================================================
-         JANELA
+         CARD PRINCIPAL
          ====================================================== */
 
       #${MODAL_ID}
@@ -1391,17 +1152,13 @@
         width:
 
           min(
-            520px,
+            540px,
             100%
           );
 
 
         max-height:
-
-          min(
-            720px,
-            calc(100vh - 36px)
-          );
+          calc(100vh - 40px);
 
 
         overflow:
@@ -1413,11 +1170,7 @@
 
 
         padding:
-          18px;
-
-
-        border-radius:
-          16px;
+          20px;
 
 
         border:
@@ -1425,8 +1178,12 @@
           1px solid
           var(
             --border-color,
-            rgba(148,163,184,.25)
+            rgba(148,163,184,.22)
           );
+
+
+        border-radius:
+          18px;
 
 
         background:
@@ -1452,10 +1209,9 @@
             15,
             23,
             42,
-            .24
+            .22
           );
       }
-
 
 
       /* ======================================================
@@ -1469,17 +1225,88 @@
           flex;
 
         align-items:
-          center;
+          flex-start;
 
         justify-content:
           space-between;
 
         gap:
-          12px;
+          14px;
 
 
         margin-bottom:
-          14px;
+          18px;
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-heading {
+
+        display:
+          flex;
+
+        align-items:
+          center;
+
+        gap:
+          12px;
+
+
+        min-width:
+          0;
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-heading-icon {
+
+        flex:
+          0 0 auto;
+
+
+        display:
+          inline-flex;
+
+        align-items:
+          center;
+
+        justify-content:
+          center;
+
+
+        width:
+          42px;
+
+        height:
+          42px;
+
+
+        border-radius:
+          12px;
+
+
+        color:
+          #ffffff;
+
+
+        background:
+
+          linear-gradient(
+            135deg,
+            #4f46e5,
+            #7c3aed
+          );
+
+
+        box-shadow:
+
+          0 6px 16px
+          rgba(
+            79,
+            70,
+            229,
+            .22
+          );
       }
 
 
@@ -1487,7 +1314,12 @@
       .medsim-backup-title {
 
         font-size:
-          1.05rem;
+          1.02rem;
+
+
+        line-height:
+          1.25;
+
 
         font-weight:
           800;
@@ -1495,25 +1327,10 @@
 
 
       #${MODAL_ID}
-      .medsim-backup-close {
+      .medsim-backup-subtitle {
 
-        width:
-          34px;
-
-        height:
-          34px;
-
-
-        border:
-          0;
-
-
-        border-radius:
-          9px;
-
-
-        background:
-          transparent;
+        margin-top:
+          3px;
 
 
         color:
@@ -1525,7 +1342,74 @@
 
 
         font-size:
-          22px;
+          .78rem;
+
+
+        line-height:
+          1.35;
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-close {
+
+        flex:
+          0 0 auto;
+
+
+        display:
+          inline-flex;
+
+        align-items:
+          center;
+
+        justify-content:
+          center;
+
+
+        width:
+          34px;
+
+        height:
+          34px;
+
+
+        padding:
+          0;
+
+
+        border:
+          0;
+
+
+        border-radius:
+          10px;
+
+
+        background:
+
+          rgba(
+            148,
+            163,
+            184,
+            .08
+          );
+
+
+        color:
+
+          var(
+            --text-secondary,
+            #64748b
+          );
+
+
+        font:
+          inherit;
+
+
+        font-size:
+          21px;
 
 
         cursor:
@@ -1533,33 +1417,58 @@
       }
 
 
+      #${MODAL_ID}
+      .medsim-backup-close:hover {
+
+        background:
+
+          rgba(
+            148,
+            163,
+            184,
+            .16
+          );
+      }
+
 
       /* ======================================================
-         ÚLTIMO BACKUP
+         STATUS
          ====================================================== */
 
       #${MODAL_ID}
       .medsim-backup-status {
 
+        display:
+          flex;
+
+        align-items:
+          center;
+
+        gap:
+          10px;
+
+
         padding:
-          12px;
+          11px 12px;
 
 
         margin-bottom:
-          12px;
-
-
-        border-radius:
-          12px;
+          18px;
 
 
         border:
 
           1px solid
-          var(
-            --border-color,
-            rgba(148,163,184,.22)
+          rgba(
+            99,
+            102,
+            241,
+            .14
           );
+
+
+        border-radius:
+          12px;
 
 
         background:
@@ -1568,8 +1477,63 @@
             99,
             102,
             241,
-            .06
+            .055
           );
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-status-icon {
+
+        flex:
+          0 0 auto;
+
+
+        display:
+          flex;
+
+        align-items:
+          center;
+
+        justify-content:
+          center;
+
+
+        width:
+          28px;
+
+        height:
+          28px;
+
+
+        border-radius:
+          50%;
+
+
+        background:
+
+          rgba(
+            99,
+            102,
+            241,
+            .11
+          );
+
+
+        color:
+
+          var(
+            --purple-primary,
+            #6366f1
+          );
+
+
+        font-size:
+          .78rem;
+
+
+        font-weight:
+          900;
       }
 
 
@@ -1582,20 +1546,21 @@
 
 
         margin-bottom:
-          4px;
+          2px;
 
 
         font-size:
-          .82rem;
+          .76rem;
+
+
+        font-weight:
+          750;
       }
 
 
       #${MODAL_ID}
       .medsim-backup-status
-      span,
-
-      #${MODAL_ID}
-      .medsim-backup-note {
+      span {
 
         color:
 
@@ -1606,17 +1571,48 @@
 
 
         font-size:
-          .8rem;
-
-
-        line-height:
-          1.45;
+          .76rem;
       }
 
 
+      /* ======================================================
+         TÍTULO DA SEÇÃO
+         ====================================================== */
+
+      #${MODAL_ID}
+      .medsim-backup-section-title {
+
+        margin-bottom:
+          8px;
+
+
+        color:
+
+          var(
+            --text-secondary,
+            #64748b
+          );
+
+
+        font-size:
+          .72rem;
+
+
+        font-weight:
+          800;
+
+
+        letter-spacing:
+          .04em;
+
+
+        text-transform:
+          uppercase;
+      }
+
 
       /* ======================================================
-         BOTÕES
+         AÇÕES
          ====================================================== */
 
       #${MODAL_ID}
@@ -1631,27 +1627,33 @@
 
 
         gap:
-          10px;
-
-
-        margin-top:
-          14px;
+          9px;
       }
 
 
       #${MODAL_ID}
       .medsim-backup-action {
 
+        display:
+          flex;
+
+        align-items:
+          center;
+
+        gap:
+          10px;
+
+
         min-height:
-          46px;
+          64px;
 
 
         padding:
           10px 12px;
 
 
-        border-radius:
-          11px;
+        box-sizing:
+          border-box;
 
 
         border:
@@ -1659,8 +1661,12 @@
           1px solid
           var(
             --border-color,
-            rgba(148,163,184,.28)
+            rgba(148,163,184,.22)
           );
+
+
+        border-radius:
+          12px;
 
 
         background:
@@ -1683,21 +1689,187 @@
           inherit;
 
 
-        font-weight:
-          750;
+        text-align:
+          left;
 
 
         cursor:
           pointer;
+
+
+        transition:
+
+          transform .16s ease,
+          border-color .16s ease,
+          box-shadow .16s ease,
+          background .16s ease;
       }
 
+
+      #${MODAL_ID}
+      .medsim-backup-action:hover {
+
+        transform:
+          translateY(-1px);
+
+
+        border-color:
+
+          rgba(
+            99,
+            102,
+            241,
+            .26
+          );
+
+
+        box-shadow:
+
+          0 5px 14px
+          rgba(
+            15,
+            23,
+            42,
+            .07
+          );
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-action
+      .medsim-action-icon {
+
+        flex:
+          0 0 auto;
+
+
+        display:
+          flex;
+
+        align-items:
+          center;
+
+        justify-content:
+          center;
+
+
+        width:
+          31px;
+
+        height:
+          31px;
+
+
+        border-radius:
+          9px;
+
+
+        background:
+
+          rgba(
+            99,
+            102,
+            241,
+            .08
+          );
+
+
+        color:
+
+          var(
+            --purple-primary,
+            #6366f1
+          );
+
+
+        font-size:
+          1rem;
+
+
+        font-weight:
+          800;
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-action
+      strong {
+
+        display:
+          block;
+
+
+        font-size:
+          .78rem;
+
+
+        font-weight:
+          750;
+
+
+        line-height:
+          1.25;
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-action
+      small {
+
+        display:
+          block;
+
+
+        margin-top:
+          2px;
+
+
+        color:
+
+          var(
+            --text-secondary,
+            #64748b
+          );
+
+
+        font-size:
+          .68rem;
+
+
+        line-height:
+          1.25;
+      }
+
+
+      /* Ação principal */
 
       #${MODAL_ID}
       .medsim-backup-action.primary {
 
         border-color:
-          transparent;
 
+          rgba(
+            99,
+            102,
+            241,
+            .20
+          );
+
+
+        background:
+
+          rgba(
+            99,
+            102,
+            241,
+            .055
+          );
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-action.primary
+      .medsim-action-icon {
 
         color:
           #ffffff;
@@ -1710,26 +1882,13 @@
             #4f46e5,
             #7c3aed
           );
-
-
-        box-shadow:
-
-          0 5px 14px
-          rgba(
-            79,
-            70,
-            229,
-            .20
-          );
       }
 
 
+      /* Ação destrutiva */
+
       #${MODAL_ID}
       .medsim-backup-action.danger {
-
-        color:
-          #b91c1c;
-
 
         border-color:
 
@@ -1737,8 +1896,17 @@
             220,
             38,
             38,
-            .25
+            .14
           );
+      }
+
+
+      #${MODAL_ID}
+      .medsim-backup-action.danger
+      .medsim-action-icon {
+
+        color:
+          #dc2626;
 
 
         background:
@@ -1747,18 +1915,79 @@
             220,
             38,
             38,
-            .06
+            .08
           );
       }
 
 
       #${MODAL_ID}
-      .medsim-backup-action:hover {
+      .medsim-backup-action.danger:hover {
 
-        transform:
-          translateY(-1px);
+        border-color:
+
+          rgba(
+            220,
+            38,
+            38,
+            .28
+          );
       }
 
+
+      /* ======================================================
+         PRIVACIDADE
+         ====================================================== */
+
+      #${MODAL_ID}
+      .medsim-backup-privacy {
+
+        display:
+          flex;
+
+        align-items:
+          flex-start;
+
+        gap:
+          8px;
+
+
+        margin-top:
+          14px;
+
+
+        padding:
+          10px 11px;
+
+
+        border-radius:
+          10px;
+
+
+        background:
+
+          rgba(
+            148,
+            163,
+            184,
+            .065
+          );
+
+
+        color:
+
+          var(
+            --text-secondary,
+            #64748b
+          );
+
+
+        font-size:
+          .70rem;
+
+
+        line-height:
+          1.45;
+      }
 
 
       /* ======================================================
@@ -1776,7 +2005,7 @@
 
 
         padding:
-          10px 12px;
+          9px 11px;
 
 
         border-radius:
@@ -1784,7 +2013,7 @@
 
 
         font-size:
-          .82rem;
+          .76rem;
 
 
         line-height:
@@ -1811,8 +2040,9 @@
             22,
             163,
             74,
-            .09
+            .08
           );
+
 
         color:
           #15803d;
@@ -1829,8 +2059,9 @@
             220,
             38,
             38,
-            .09
+            .08
           );
+
 
         color:
           #b91c1c;
@@ -1844,16 +2075,20 @@
         background:
 
           rgba(
-            59,
-            130,
-            246,
-            .09
+            99,
+            102,
+            241,
+            .08
           );
 
-        color:
-          #1d4ed8;
-      }
 
+        color:
+
+          var(
+            --purple-primary,
+            #4f46e5
+          );
+      }
 
 
       /* ======================================================
@@ -1865,11 +2100,38 @@
         560px
       ) {
 
+        #${MODAL_ID} {
+
+          padding:
+            12px;
+        }
+
+
+        #${MODAL_ID}
+        .medsim-backup-card {
+
+          padding:
+            16px;
+
+
+          border-radius:
+            15px;
+        }
+
+
         #${MODAL_ID}
         .medsim-backup-grid {
 
           grid-template-columns:
             1fr;
+        }
+
+
+        #${MODAL_ID}
+        .medsim-backup-action {
+
+          min-height:
+            58px;
         }
 
       }
@@ -1878,26 +2140,18 @@
 
 
     document.head
-      .appendChild(
-        style
-      );
+      .appendChild(style);
   }
 
 
-
   /* ============================================================
-     CRIAR INTERFACE
+     INTERFACE
      ============================================================ */
 
   function buildUI() {
 
     injectStyle();
 
-
-
-    /* ----------------------------------------------------------
-       MODAL
-       ---------------------------------------------------------- */
 
     if (
       !document.getElementById(
@@ -1927,13 +2181,53 @@
           aria-modal="true"
           aria-labelledby="medsim-backup-title">
 
+
           <div class="medsim-backup-head">
 
-            <div
-              id="medsim-backup-title"
-              class="medsim-backup-title">
+            <div class="medsim-backup-heading">
 
-              Backup dos meus dados
+
+              <div
+                class="medsim-backup-heading-icon"
+                aria-hidden="true">
+
+                <svg
+                  viewBox="0 0 24 24"
+                  width="21"
+                  height="21"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round">
+
+                  <path d="M12 3v12"></path>
+                  <path d="m7 10 5 5 5-5"></path>
+                  <path d="M5 21h14"></path>
+
+                </svg>
+
+              </div>
+
+
+              <div>
+
+                <div
+                  id="medsim-backup-title"
+                  class="medsim-backup-title">
+
+                  Backup dos meus dados
+
+                </div>
+
+
+                <div class="medsim-backup-subtitle">
+
+                  Proteja e transfira seu progresso no MedSim
+
+                </div>
+
+              </div>
 
             </div>
 
@@ -1950,36 +2244,39 @@
           </div>
 
 
+
           <div class="medsim-backup-status">
 
-            <strong>
-              Último backup exportado
-            </strong>
+            <div class="medsim-backup-status-icon">
+              ✓
+            </div>
 
-            <span id="medsim-backup-last">
 
-              Nenhum backup exportado ainda
+            <div>
 
-            </span>
+              <strong>
+                Último backup exportado
+              </strong>
+
+
+              <span id="medsim-backup-last">
+
+                Nenhum backup exportado ainda
+
+              </span>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="medsim-backup-section-title">
+
+            Gerenciar meus dados
 
           </div>
 
-
-          <div class="medsim-backup-note">
-
-            O backup inclui apenas dados locais
-            do MedSim neste navegador, como
-            histórico, progresso, simulados
-            concluídos, estatísticas, rascunhos
-            e preferências.
-
-            <br><br>
-
-            O arquivo pode conter informações
-            pessoais de estudo. Guarde-o em
-            local privado.
-
-          </div>
 
 
           <div class="medsim-backup-grid">
@@ -1990,9 +2287,25 @@
               class="medsim-backup-action primary"
               data-action="export">
 
-              Exportar backup
+              <span class="medsim-action-icon">
+                ↓
+              </span>
+
+
+              <span>
+
+                <strong>
+                  Exportar backup
+                </strong>
+
+                <small>
+                  Salvar meus dados
+                </small>
+
+              </span>
 
             </button>
+
 
 
             <button
@@ -2000,9 +2313,25 @@
               class="medsim-backup-action"
               data-action="restore">
 
-              Restaurar backup
+              <span class="medsim-action-icon">
+                ↑
+              </span>
+
+
+              <span>
+
+                <strong>
+                  Restaurar backup
+                </strong>
+
+                <small>
+                  Importar arquivo salvo
+                </small>
+
+              </span>
 
             </button>
+
 
 
             <button
@@ -2010,9 +2339,25 @@
               class="medsim-backup-action"
               data-action="refresh">
 
-              Ver último backup
+              <span class="medsim-action-icon">
+                ↻
+              </span>
+
+
+              <span>
+
+                <strong>
+                  Ver último backup
+                </strong>
+
+                <small>
+                  Atualizar informação
+                </small>
+
+              </span>
 
             </button>
+
 
 
             <button
@@ -2020,12 +2365,46 @@
               class="medsim-backup-action danger"
               data-action="clear">
 
-              Limpar meus dados
+              <span class="medsim-action-icon">
+                ×
+              </span>
+
+
+              <span>
+
+                <strong>
+                  Limpar meus dados
+                </strong>
+
+                <small>
+                  Apagar dados deste navegador
+                </small>
+
+              </span>
 
             </button>
 
 
           </div>
+
+
+
+          <div class="medsim-backup-privacy">
+
+            <span aria-hidden="true">
+              ◉
+            </span>
+
+
+            <span>
+
+              Seus dados ficam armazenados neste navegador.
+              O MedSim não envia seu histórico para um servidor.
+
+            </span>
+
+          </div>
+
 
 
           <div
@@ -2034,6 +2413,7 @@
             data-type="info">
 
           </div>
+
 
 
           <input
@@ -2049,31 +2429,18 @@
 
 
       document.body
-        .appendChild(
-          modal
-        );
+        .appendChild(modal);
 
-
-
-      /* --------------------------------------------------------
-         FECHAR
-         -------------------------------------------------------- */
 
       modal
         .querySelector(
           '.medsim-backup-close'
         )
-
         .addEventListener(
           'click',
           closeModal
         );
 
-
-
-      /*
-       * Clicar fora também fecha.
-       */
 
       modal.addEventListener(
 
@@ -2094,32 +2461,20 @@
       );
 
 
-
-      /* --------------------------------------------------------
-         EXPORTAR
-         -------------------------------------------------------- */
-
       modal
         .querySelector(
           '[data-action="export"]'
         )
-
         .addEventListener(
           'click',
           exportBackup
         );
 
 
-
-      /* --------------------------------------------------------
-         RESTAURAR
-         -------------------------------------------------------- */
-
       modal
         .querySelector(
           '[data-action="restore"]'
         )
-
         .addEventListener(
 
           'click',
@@ -2143,16 +2498,10 @@
         );
 
 
-
-      /* --------------------------------------------------------
-         VER ÚLTIMO BACKUP
-         -------------------------------------------------------- */
-
       modal
         .querySelector(
           '[data-action="refresh"]'
         )
-
         .addEventListener(
 
           'click',
@@ -2175,32 +2524,20 @@
         );
 
 
-
-      /* --------------------------------------------------------
-         LIMPAR
-         -------------------------------------------------------- */
-
       modal
         .querySelector(
           '[data-action="clear"]'
         )
-
         .addEventListener(
           'click',
           clearMyData
         );
 
 
-
-      /* --------------------------------------------------------
-         ARQUIVO SELECIONADO
-         -------------------------------------------------------- */
-
       document
         .getElementById(
           FILE_INPUT_ID
         )
-
         .addEventListener(
 
           'change',
@@ -2220,16 +2557,14 @@
     }
 
 
-
     ensureButton();
 
     updateStatus();
   }
 
 
-
   /* ============================================================
-     BOTÃO NO HUB
+     BOTÃO DO HUB
      ============================================================ */
 
   function ensureButton() {
@@ -2240,9 +2575,7 @@
       );
 
 
-    if (
-      !button
-    ) {
+    if (!button) {
 
       button =
         document.createElement(
@@ -2260,12 +2593,33 @@
 
       button.innerHTML = `
 
-        <span aria-hidden="true">
-          💾
+        <span
+          class="medsim-backup-menu-icon"
+          aria-hidden="true">
+
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round">
+
+            <path d="M12 3v12"></path>
+            <path d="m7 10 5 5 5-5"></path>
+            <path d="M5 21h14"></path>
+
+          </svg>
+
         </span>
 
-        <span>
+
+        <span class="medsim-backup-menu-text">
+
           Backup dos meus dados
+
         </span>
 
       `;
@@ -2277,12 +2631,6 @@
       );
     }
 
-
-
-    /*
-     * Seu Hub possui nav-menu.
-     * Tentamos colocar o botão ali.
-     */
 
     const nav =
       document.querySelector(
@@ -2296,10 +2644,7 @@
       );
 
 
-
-    if (
-      nav
-    ) {
+    if (nav) {
 
       if (
         button.parentElement !==
@@ -2316,9 +2661,8 @@
         'medsim-backup-fallback'
       );
 
-    } else if (
-      sidebar
-    ) {
+
+    } else if (sidebar) {
 
       if (
         button.parentElement !==
@@ -2335,19 +2679,13 @@
         'medsim-backup-fallback'
       );
 
+
     } else if (
       !button.isConnected
     ) {
 
-      /*
-       * Segurança caso a estrutura
-       * do index mude futuramente.
-       */
-
       document.body
-        .appendChild(
-          button
-        );
+        .appendChild(button);
 
 
       button.classList.add(
@@ -2355,7 +2693,6 @@
       );
     }
   }
-
 
 
   /* ============================================================
@@ -2370,10 +2707,7 @@
       );
 
 
-    if (
-      !modal
-    ) {
-
+    if (!modal) {
       return;
     }
 
@@ -2386,7 +2720,6 @@
   }
 
 
-
   function closeModal() {
 
     const modal =
@@ -2395,9 +2728,7 @@
       );
 
 
-    if (
-      modal
-    ) {
+    if (modal) {
 
       modal.dataset.open =
         'false';
@@ -2405,9 +2736,8 @@
   }
 
 
-
   /* ============================================================
-     3. VER ÚLTIMO BACKUP
+     STATUS
      ============================================================ */
 
   function updateStatus() {
@@ -2418,10 +2748,7 @@
       );
 
 
-    if (
-      !target
-    ) {
-
+    if (!target) {
       return;
     }
 
@@ -2444,9 +2771,7 @@
       +
 
       `${count} item(ns) locais atualmente`;
-
   }
-
 
 
   /* ============================================================
@@ -2464,10 +2789,7 @@
       );
 
 
-    if (
-      !box
-    ) {
-
+    if (!box) {
       return;
     }
 
@@ -2484,7 +2806,6 @@
       'true';
 
 
-
     clearTimeout(
       showMessage._timer
     );
@@ -2499,16 +2820,14 @@
             'false';
 
         },
-
         5000
 
       );
   }
 
 
-
   /* ============================================================
-     DETECTAR SE ESTÁ NO SIMULADO
+     DETECTAR SIMULADO ABERTO
      ============================================================ */
 
   function simulatorOpen() {
@@ -2526,20 +2845,17 @@
           (
             frame.getAttribute(
               'src'
-            ) ||
-            ''
+            ) || ''
           ).trim();
 
 
         if (
           !src ||
-          src ===
-            'about:blank'
+          src === 'about:blank'
         ) {
 
           return false;
         }
-
 
 
         const style =
@@ -2549,20 +2865,12 @@
 
 
         if (
-
-          style.display ===
-            'none'
-
-          ||
-
-          style.visibility ===
-            'hidden'
-
+          style.display === 'none' ||
+          style.visibility === 'hidden'
         ) {
 
           return false;
         }
-
 
 
         const rect =
@@ -2570,24 +2878,16 @@
 
 
         return (
-
-          rect.width >
-            0
-
-          &&
-
-          rect.height >
-            0
-
+          rect.width > 0 &&
+          rect.height > 0
         );
       }
     );
   }
 
 
-
   /* ============================================================
-     BOTÃO APARECE SOMENTE NO HUB
+     MOSTRAR SOMENTE NO HUB
      ============================================================ */
 
   function syncHubVisibility() {
@@ -2601,10 +2901,7 @@
       );
 
 
-    if (
-      !button
-    ) {
-
+    if (!button) {
       return;
     }
 
@@ -2613,30 +2910,17 @@
       simulatorOpen();
 
 
-
-    /*
-     * Entrou no simulado:
-     * botão desaparece.
-     *
-     * Voltou ao Hub:
-     * reaparece.
-     */
-
     button.style.display =
       open
         ? 'none'
         : '';
 
 
-
-    if (
-      open
-    ) {
+    if (open) {
 
       closeModal();
     }
   }
-
 
 
   /* ============================================================
@@ -2651,11 +2935,6 @@
     syncHubVisibility();
 
 
-
-    /*
-     * ESC fecha a janela.
-     */
-
     document.addEventListener(
 
       'keydown',
@@ -2663,8 +2942,7 @@
       function (event) {
 
         if (
-          event.key ===
-            'Escape'
+          event.key === 'Escape'
         ) {
 
           closeModal();
@@ -2674,11 +2952,6 @@
 
     );
 
-
-
-    /*
-     * Observa mudanças no Hub.
-     */
 
     const observer =
       new MutationObserver(
@@ -2711,12 +2984,6 @@
     );
 
 
-
-    /*
-     * Verificação leve para detectar
-     * entrada/saída dos simulados.
-     */
-
     setInterval(
 
       syncHubVisibility,
@@ -2728,11 +2995,10 @@
 
     console.info(
 
-      '[MedSim] Backup dos meus dados ativo.'
+      '[MedSim] Backup dos meus dados v2 ativo.'
 
     );
   }
-
 
 
   if (
@@ -2747,8 +3013,7 @@
       start,
 
       {
-        once:
-          true
+        once: true
       }
 
     );
