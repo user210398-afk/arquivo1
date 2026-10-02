@@ -1959,207 +1959,497 @@
      ============================================================ */
 
   function monitorNavigation(
-    frame,
-    path
+  frame,
+  path
+) {
+
+  let doc;
+
+
+  try {
+
+    doc =
+      frame.contentDocument;
+
+  } catch (_) {
+
+    return;
+  }
+
+
+  if (
+    !doc ||
+    !doc.body
   ) {
 
-    let doc;
+    return;
+  }
 
 
-    try {
-
-      doc =
-        frame.contentDocument;
-
-    } catch (_) {
-
-      return;
-    }
-
-
-    if (
-      !doc ||
-      !doc.body
-    ) {
-
-      return;
-    }
-
-
-    if (
-      doc.documentElement
-        .dataset
-        .medsimTrailV3 ===
-      '1'
-    ) {
-
-      return;
-    }
-
-
+  if (
     doc.documentElement
       .dataset
-      .medsimTrailV3 =
-      '1';
+      .medsimTrailV4 ===
+    '1'
+  ) {
+
+    return;
+  }
+
+
+  doc.documentElement
+    .dataset
+    .medsimTrailV4 =
+    '1';
 
 
 
-    doc.addEventListener(
+  /* ==========================================================
+     DETECTAR HUB INTERNO DO SIMULADO
+     ========================================================== */
 
-      'click',
+  function internalHubVisible() {
 
-      event => {
+    const hub =
 
-        const control =
+      doc.getElementById(
+        'hub-screen'
+      )
 
-          event.target.closest
+      ||
 
-            ? event.target.closest(
-
-                'button,' +
-                'a,' +
-                '[role="button"],' +
-                '[onclick],' +
-                'input[type="button"],' +
-                'input[type="submit"]'
-
-              )
-
-            : null;
+      doc.querySelector(
+        '.hub-screen'
+      );
 
 
-        if (!control) {
+    const game =
 
-          return;
-        }
+      doc.getElementById(
+        'game-hud'
+      )
+
+      ||
+
+      doc.querySelector(
+        '.game-hud'
+      );
 
 
-        const controlText =
-          norm(
+    if (!hub) {
 
-            control.textContent
+      return false;
+    }
 
-            ||
 
-            control.value
+    /*
+     * Hub precisa estar visível.
+     */
 
-            ||
+    if (
+      !visible(
+        hub
+      )
+    ) {
 
-            control.getAttribute(
-              'aria-label'
-            )
+      return false;
+    }
 
-            ||
 
-            ''
+    /*
+     * E a prova não pode estar
+     * atualmente sendo exibida.
+     */
 
-          );
+    if (
+      game &&
+      visible(
+        game
+      )
+    ) {
 
+      return false;
+    }
+
+
+    return true;
+  }
+
+
+
+  /* ==========================================================
+     SINCRONIZAR PAINEL COM A TELA ATUAL
+     ========================================================== */
+
+  function syncInternalHub() {
+
+    /*
+     * Voltou ao hub interno.
+     */
+
+    if (
+      internalHubVisible()
+    ) {
+
+      /*
+       * A resolução terminou/foi pausada.
+       *
+       * Libera Continuar/Recomeçar para
+       * esta abertura do hub interno.
+       */
+
+      clearRunning(
+        path
+      );
+
+
+      const record =
+        getRecord(
+          path
+        );
+
+
+      /*
+       * Só aparece se REALMENTE existir
+       * progresso salvo.
+       */
+
+      if (
+        record
+      ) {
 
         /*
-         * SAIU PARA O HUB.
-         *
-         * Libera o painel para a
-         * próxima abertura.
+         * Não recria o painel se ele
+         * já estiver aparecendo.
          */
 
         if (
-          /voltar ao hub/
-            .test(
-              controlText
-            )
-        ) {
-
-          clearRunning(
-            path
-          );
-
-
-          removePanel(
-            doc
-          );
-
-
-          return;
-        }
-
-
-        if (
-          shouldIgnoreControl(
-            control
+          !doc.getElementById(
+            PANEL_ID
           )
         ) {
 
-          return;
+          showChoice(
+            frame,
+            path,
+            record
+          );
         }
 
 
+      } else {
 
-        const before =
-          questionSignature(
-            doc
-          );
-
-
-        const descriptor =
-          descriptorFor(
-            control,
-            doc
-          );
+        removePanel(
+          doc
+        );
+      }
 
 
-        if (!descriptor) {
-
-          return;
-        }
+      return;
+    }
 
 
+
+    /*
+     * Se não estamos no hub interno,
+     * verificamos se a prova está aberta.
+     */
+
+    const game =
+
+      doc.getElementById(
+        'game-hud'
+      )
+
+      ||
+
+      doc.querySelector(
+        '.game-hud'
+      );
+
+
+    /*
+     * Durante a resolução:
+     *
+     * nunca mostrar Continuar/Recomeçar.
+     */
+
+    if (
+      game &&
+      visible(
+        game
+      )
+    ) {
+
+      setRunning(
+        path
+      );
+
+
+      removePanel(
+        doc
+      );
+    }
+  }
+
+
+
+  /*
+   * Alguns simulados atualizam a interface
+   * imediatamente; outros levam alguns
+   * milissegundos.
+   *
+   * Fazemos três verificações finitas.
+   *
+   * NÃO há MutationObserver.
+   * NÃO há monitoramento de scroll.
+   */
+
+  function scheduleInternalHubSync() {
+
+    [
+      80,
+      260,
+      650
+    ]
+    .forEach(
+      delay => {
 
         setTimeout(
-          () => {
+          syncInternalHub,
+          delay
+        );
 
-            const after =
-              questionSignature(
-                doc
-              );
-
-
-            if (
-              !after ||
-              after === before
-            ) {
-
-              return;
-            }
+      }
+    );
+  }
 
 
-            const trail =
-              getTrail(
-                path
-              );
+
+  /* ==========================================================
+     CLIQUES DO SIMULADO
+     ========================================================== */
+
+  doc.addEventListener(
+
+    'click',
+
+    event => {
+
+      const control =
+
+        event.target.closest
+
+          ? event.target.closest(
+
+              'button,' +
+              'a,' +
+              '[role="button"],' +
+              '[onclick],' +
+              'input[type="button"],' +
+              'input[type="submit"]'
+
+            )
+
+          : null;
 
 
-            trail.push(
-              descriptor
-            );
+      if (!control) {
+
+        return;
+      }
 
 
-            setTrail(
-              path,
-              trail
-            );
 
-          },
+      /*
+       * Os nossos próprios botões
+       * Continuar/Recomeçar já possuem
+       * seus handlers.
+       *
+       * Não interferimos neles aqui.
+       */
 
-          320
+      if (
+
+        control.closest
+
+        &&
+
+        control.closest(
+          '#' + PANEL_ID
+        )
+
+      ) {
+
+        return;
+      }
+
+
+
+      const controlText =
+        norm(
+
+          control.textContent
+
+          ||
+
+          control.value
+
+          ||
+
+          control.getAttribute(
+            'aria-label'
+          )
+
+          ||
+
+          ''
 
         );
 
-      },
 
-      true
 
-    );
+      /* ======================================================
+         VOLTAR AO HUB PRINCIPAL
+         ====================================================== */
+
+      if (
+        /voltar ao hub/
+          .test(
+            controlText
+          )
+      ) {
+
+        clearRunning(
+          path
+        );
+
+
+        removePanel(
+          doc
+        );
+
+
+        return;
+      }
+
+
+
+      /*
+       * Depois de QUALQUER navegação
+       * normal do simulador, verificamos
+       * se ele foi para:
+       *
+       * - hub interno
+       * - resolução da prova
+       */
+
+      scheduleInternalHubSync();
+
+
+
+      if (
+        shouldIgnoreControl(
+          control
+        )
+      ) {
+
+        return;
+      }
+
+
+
+      /* ======================================================
+         REGISTRAR NAVEGAÇÃO REAL
+         ====================================================== */
+
+      const before =
+        questionSignature(
+          doc
+        );
+
+
+      const descriptor =
+        descriptorFor(
+          control,
+          doc
+        );
+
+
+      if (!descriptor) {
+
+        return;
+      }
+
+
+
+      setTimeout(
+        () => {
+
+          /*
+           * Se o clique acabou levando
+           * de volta ao hub interno,
+           * NÃO registramos esse botão
+           * como parte da trilha da prova.
+           */
+
+          if (
+            internalHubVisible()
+          ) {
+
+            return;
+          }
+
+
+
+          const after =
+            questionSignature(
+              doc
+            );
+
+
+          /*
+           * Só é navegação de questão
+           * se o conteúdo realmente mudou.
+           */
+
+          if (
+            !after ||
+            after === before
+          ) {
+
+            return;
+          }
+
+
+
+          const trail =
+            getTrail(
+              path
+            );
+
+
+          trail.push(
+            descriptor
+          );
+
+
+          setTrail(
+            path,
+            trail
+          );
+
+        },
+
+        320
+
+      );
+
+    },
+
+    true
+
+  );
   }
 
 
