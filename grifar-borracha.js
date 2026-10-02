@@ -1,13 +1,15 @@
 (function () {
   'use strict';
 
-  const VERSION = 1;
+  const VERSION = 2;
+  const STYLE_ID = 'medsim-grifo-borracha-v2-style';
+  const MARK_CLASS = 'medsim-grifo-v2';
+  const PAINTABLE_CLASS = 'medsim-grifo-v2-area';
 
-  const STYLE_ID =
-    'medsim-grifo-borracha-v1';
+  const BUTTON_SELECTOR =
+    'button,a,[role="button"],[onclick]';
 
-  const TARGETS = [
-
+  const TEXT_SELECTORS = [
     '#q-statement',
     '.q-statement',
 
@@ -22,208 +24,376 @@
 
     '[data-question-statement]',
     '[data-role="question-statement"]',
-    '[data-role="question-text"]'
+    '[data-role="question-text"]',
 
+    '[class*="question-statement"]',
+    '[class*="question-text"]',
+    '[class*="q-statement"]',
+
+    '[class*="enunciado"]',
+    '[class*="enunci"]',
+
+    '[id*="question-statement"]',
+    '[id*="question-text"]',
+    '[id*="q-statement"]',
+
+    '[id*="enunciado"]',
+    '[id*="enunci"]'
   ].join(',');
 
-
-  const CONTROLS =
-    'button,a,[role="button"],[onclick]';
-
-
-  const frames =
-    new WeakSet();
+  const frames = new WeakSet();
+  const docs = new WeakMap();
 
 
-  const states =
-    new WeakMap();
-
-
-
-  /* ============================================================
-     NORMALIZAR TEXTO
-     ============================================================ */
-
-  function norm(v) {
-
-    return String(
-      v || ''
-    )
-
+  function norm(value) {
+    return String(value || '')
       .normalize('NFD')
-
-      .replace(
-        /[\u0300-\u036f]/g,
-        ''
-      )
-
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
-
-      .replace(
-        /\s+/g,
-        ' '
-      )
-
+      .replace(/\s+/g, ' ')
       .trim();
   }
 
 
+  function buttonKind(control) {
+    if (!control) return null;
 
-  /* ============================================================
-     CSS AUXILIAR
+    const icon =
+      control.querySelector
+        ? control.querySelector('i')
+        : null;
 
-     Não altera a estética dos botões.
-     Apenas permite selecionar o texto
-     e define o visual do trecho grifado.
-     ============================================================ */
-
-  function injectStyle(doc) {
+    const text = norm([
+      control.id,
+      control.getAttribute &&
+        control.getAttribute('title'),
+      control.getAttribute &&
+        control.getAttribute('aria-label'),
+      control.textContent,
+      control.className,
+      icon && icon.className
+    ].join(' '));
 
     if (
-      !doc.head ||
-      doc.getElementById(
-        STYLE_ID
-      )
+      control.id === 'btn-highlight' ||
+      /\bgrifar\b|marca[ -]?texto|highlighter|ph-highlighter/.test(text)
     ) {
+      return 'highlight';
+    }
 
+    if (
+      control.id === 'btn-eraser' ||
+      /\bborracha\b|apagar grifo|remover grifo|\beraser\b|ph-eraser/.test(text)
+    ) {
+      return 'eraser';
+    }
+
+    return null;
+  }
+
+
+  function injectStyle(doc) {
+    if (
+      !doc.head ||
+      doc.getElementById(STYLE_ID)
+    ) {
       return;
     }
 
-
     const style =
-      doc.createElement(
-        'style'
-      );
-
+      doc.createElement('style');
 
     style.id =
       STYLE_ID;
 
-
     style.textContent = `
 
-      #q-statement.medsim-grifo-selectable,
-      .q-statement.medsim-grifo-selectable,
-      .medsim-grifo-selectable {
+      .${PAINTABLE_CLASS} {
+        -webkit-user-select: none !important;
+        user-select: none !important;
 
-        user-select:
-          text !important;
+        -webkit-touch-callout: none !important;
 
-        -webkit-user-select:
-          text !important;
+        touch-action: none !important;
       }
 
 
-      .medsim-universal-highlight {
+      .${MARK_CLASS},
+      .${MARK_CLASS}.hl-word,
+      .${MARK_CLASS}.marked {
 
-        background-color:
-          #fef08a;
+        background: #fef08a !important;
+        background-color: #fef08a !important;
 
-        color:
-          #0f172a;
+        color: inherit !important;
 
-        font-weight:
-          600;
+        border-radius: 3px;
 
-        border-radius:
-          4px;
-
-        padding:
-          2px 3px;
-
-        box-decoration-break:
-          clone;
-
-        -webkit-box-decoration-break:
-          clone;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
       }
 
     `;
 
-
-    doc.head
-      .appendChild(
-        style
-      );
+    doc.head.appendChild(style);
   }
 
 
+  function isVisible(el) {
+    if (
+      !el ||
+      el.nodeType !== 1
+    ) {
+      return false;
+    }
 
-  /* ============================================================
-     IDENTIFICAR GRIFAR / BORRACHA
-     ============================================================ */
+    try {
+      const win =
+        el.ownerDocument.defaultView;
 
-  function buttonKind(control) {
+      const css =
+        win.getComputedStyle(el);
 
-    if (!control) {
+      const rect =
+        el.getBoundingClientRect();
 
+      return (
+        css.display !== 'none' &&
+        css.visibility !== 'hidden' &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+
+    } catch (_) {
+      return false;
+    }
+  }
+
+
+  function forbidden(el) {
+    if (
+      !el ||
+      !el.closest
+    ) {
+      return true;
+    }
+
+    return Boolean(
+      el.closest(
+        'button,' +
+        'a,' +
+        'input,' +
+        'textarea,' +
+        'select,' +
+        'label,' +
+
+        '.options-group,' +
+        '[id*="options"],' +
+        '[class*="options"],' +
+
+        '[id*="alternativ"],' +
+        '[class*="alternativ"],' +
+
+        '[id*="option"],' +
+        '[class*="option"],' +
+
+        '.q-integrated-toolbar,' +
+        '.tool-btn,' +
+        '.q-nav-btn'
+      )
+    );
+  }
+
+
+  function collectPaintables(doc) {
+    const out = [];
+    const seen = new Set();
+
+    function add(el) {
+      if (
+        !el ||
+        seen.has(el) ||
+        !isVisible(el) ||
+        forbidden(el)
+      ) {
+        return;
+      }
+
+      const text =
+        (el.textContent || '').trim();
+
+      if (!text) return;
+
+      seen.add(el);
+      out.push(el);
+    }
+
+
+    try {
+      doc
+        .querySelectorAll(TEXT_SELECTORS)
+        .forEach(add);
+
+    } catch (_) {}
+
+
+    /*
+     * Fallback para simuladores
+     * com estrutura diferente.
+     */
+
+    if (!out.length) {
+
+      const roots = [
+        ...doc.querySelectorAll(
+          '#game-hud,' +
+          '.game-hud,' +
+          '.quiz-screen,' +
+          '.question-screen,' +
+          '.quiz-container,' +
+          '.question-container,' +
+          '.question-card,' +
+          '.bento-q-card,' +
+          '[data-question],' +
+          '[data-questao]'
+        )
+      ].filter(isVisible);
+
+
+      for (const root of roots) {
+
+        const candidates =
+          root.querySelectorAll(
+            'p,div,span,h1,h2,h3,h4,h5,h6'
+          );
+
+
+        for (const el of candidates) {
+
+          if (
+            forbidden(el) ||
+            !isVisible(el)
+          ) {
+            continue;
+          }
+
+
+          const text =
+            (el.textContent || '').trim();
+
+
+          if (
+            text.length < 12
+          ) {
+            continue;
+          }
+
+
+          const childBlock =
+            Array.from(
+              el.children || []
+            )
+            .some(
+              child => {
+
+                try {
+                  const d =
+                    child
+                      .ownerDocument
+                      .defaultView
+                      .getComputedStyle(child)
+                      .display;
+
+                  return (
+                    d === 'block' ||
+                    d === 'flex' ||
+                    d === 'grid'
+                  );
+
+                } catch (_) {
+                  return false;
+                }
+              }
+            );
+
+
+          if (!childBlock) {
+            add(el);
+          }
+        }
+      }
+    }
+
+
+    return out;
+  }
+
+
+  function refreshPaintables(
+    doc,
+    state
+  ) {
+
+    for (
+      const el
+      of state.paintables
+    ) {
+
+      try {
+        el.classList.remove(
+          PAINTABLE_CLASS
+        );
+      } catch (_) {}
+    }
+
+
+    state.paintables.clear();
+
+
+    if (!state.mode) {
+      return;
+    }
+
+
+    for (
+      const el
+      of collectPaintables(doc)
+    ) {
+
+      state.paintables.add(el);
+
+      el.classList.add(
+        PAINTABLE_CLASS
+      );
+    }
+  }
+
+
+  function targetForElement(
+    state,
+    el
+  ) {
+
+    if (
+      !el ||
+      !el.closest ||
+      forbidden(el)
+    ) {
       return null;
     }
 
 
-    const icon =
-
-      control.querySelector
-
-        ? control.querySelector('i')
-
-        : null;
-
-
-    const all =
-      norm([
-
-        control.id,
-
-        control.getAttribute &&
-          control.getAttribute(
-            'title'
-          ),
-
-        control.getAttribute &&
-          control.getAttribute(
-            'aria-label'
-          ),
-
-        control.textContent,
-
-        control.className,
-
-        icon &&
-          icon.className
-
-      ].join(' '));
-
-
-    if (
-
-      control.id ===
-        'btn-highlight'
-
-      ||
-
-      /\bgrifar\b|marca[ -]?texto|highlighter|ph-highlighter/
-        .test(all)
-
+    for (
+      const target
+      of state.paintables
     ) {
 
-      return 'highlight';
-    }
-
-
-    if (
-
-      control.id ===
-        'btn-eraser'
-
-      ||
-
-      /\bborracha\b|apagar grifo|\beraser\b|ph-eraser/
-        .test(all)
-
-    ) {
-
-      return 'eraser';
+      if (
+        target === el ||
+        target.contains(el)
+      ) {
+        return target;
+      }
     }
 
 
@@ -231,607 +401,385 @@
   }
 
 
-
-  /* ============================================================
-     ÁREAS DE TEXTO
-     ============================================================ */
-
-  function knownTargets(doc) {
-
-    try {
-
-      return Array.from(
-
-        doc.querySelectorAll(
-          TARGETS
-        )
-
-      );
-
-    } catch (_) {
-
-      return [];
-    }
-  }
-
-
-
-  function targetForNode(
+  function setMode(
     doc,
-    node
+    state,
+    mode
   ) {
-
-    if (!node) {
-
-      return null;
-    }
-
-
-    const el =
-
-      node.nodeType === 1
-
-        ? node
-
-        : node.parentElement;
-
-
-    if (
-      !el ||
-      !el.closest
-    ) {
-
-      return null;
-    }
-
 
     /*
-     * Não queremos grifar botões,
-     * alternativas, inputs etc.
+     * Clicou novamente no mesmo botão:
+     * desativa.
      */
-
-    if (
-
-      el.closest(
-
-        'button,' +
-        'label,' +
-        'input,' +
-        'textarea,' +
-        'select,' +
-        '.options-group,' +
-        '[class*="option"],' +
-        '[id*="option"],' +
-        '[class*="alternativ"],' +
-        '[id*="alternativ"]'
-
-      )
-
-    ) {
-
-      return null;
-    }
-
-
-    const direct =
-      el.closest(
-        TARGETS
-      );
-
-
-    if (direct) {
-
-      return direct;
-    }
-
-
-    /*
-     * Fallback para simuladores
-     * com estruturas diferentes.
-     */
-
-    const semantic =
-      el.closest(
-
-        '[class*="question"],' +
-        '[id*="question"],' +
-
-        '[class*="questao"],' +
-        '[id*="questao"],' +
-
-        '[class*="enunci"],' +
-        '[id*="enunci"],' +
-
-        '[class*="statement"],' +
-        '[id*="statement"],' +
-
-        '[class*="prompt"],' +
-        '[id*="prompt"],' +
-
-        '[class*="stem"],' +
-        '[id*="stem"]'
-
-      );
-
-
-    if (semantic) {
-
-      return semantic;
-    }
-
-
-    return el.closest(
-
-      '.bento-q-card,' +
-      '.question-card,' +
-      '.quiz-question,' +
-      '.question-container,' +
-      '[data-question],' +
-      '[data-questao]'
-
-    );
-  }
-
-
-
-  function targetForRange(
-    doc,
-    range
-  ) {
-
-    if (
-      !range ||
-      range.collapsed
-    ) {
-
-      return null;
-    }
-
-
-    const a =
-      targetForNode(
-        doc,
-        range.startContainer
-      );
-
-
-    const b =
-      targetForNode(
-        doc,
-        range.endContainer
-      );
-
-
-    return (
-
-      a &&
-      a === b
-
-        ? a
-
-        : null
-
-    );
-  }
-
-
-
-  /* ============================================================
-     PERMITIR SELEÇÃO DE TEXTO
-     ============================================================ */
-
-  function setSelectable(
-    doc,
-    on
-  ) {
-
-    knownTargets(doc)
-      .forEach(
-        el => {
-
-          el.classList.toggle(
-
-            'medsim-grifo-selectable',
-
-            Boolean(on)
-
-          );
-
-        }
-      );
-  }
-
-
-
-  /* ============================================================
-     RESET
-     ============================================================ */
-
-  function resetMode(
-    doc,
-    state
-  ) {
 
     state.mode =
-      null;
+      state.mode === mode
+        ? null
+        : mode;
 
 
-    state.range =
-      null;
+    state.painting = false;
+    state.pointerId = null;
+
+    state.lastX = null;
+    state.lastY = null;
 
 
-    state.target =
-      null;
-
-
-    setSelectable(
+    refreshPaintables(
       doc,
-      false
+      state
     );
   }
 
 
-
-  /* ============================================================
-     DETECTAR TROCA DE QUESTÃO
-     ============================================================ */
-
-  function observeTarget(
+  function caretAtPoint(
     doc,
-    state,
-    target
-  ) {
-
-    if (
-      !target ||
-      state.observed.has(
-        target
-      )
-    ) {
-
-      return;
-    }
-
-
-    state.observed.add(
-      target
-    );
-
-
-    let lastText =
-      target.textContent ||
-      '';
-
-
-    new MutationObserver(
-      () => {
-
-        const now =
-          target.textContent ||
-          '';
-
-
-        if (
-          now !== lastText
-        ) {
-
-          lastText =
-            now;
-
-
-          /*
-           * Mudou de questão.
-           * Desativa a ferramenta.
-           */
-
-          resetMode(
-            doc,
-            state
-          );
-        }
-
-      }
-
-    ).observe(
-
-      target,
-
-      {
-
-        childList:
-          true,
-
-        characterData:
-          true,
-
-        subtree:
-          true
-
-      }
-
-    );
-  }
-
-
-
-  function observeKnownTargets(
-    doc,
-    state
-  ) {
-
-    knownTargets(doc)
-      .forEach(
-        el => {
-
-          observeTarget(
-            doc,
-            state,
-            el
-          );
-
-        }
-      );
-  }
-
-
-
-  /* ============================================================
-     SINCRONIZAR MODO
-     ============================================================ */
-
-  function syncMode(
-    doc,
-    state,
-    kind
-  ) {
-
-    const targets =
-      knownTargets(
-        doc
-      );
-
-
-    /*
-     * Se o simulador original já
-     * adiciona essas classes,
-     * respeitamos isso.
-     */
-
-    const pen =
-      targets.some(
-        el =>
-
-          el.classList.contains(
-            'pen-active'
-          )
-      );
-
-
-    const eraser =
-      targets.some(
-        el =>
-
-          el.classList.contains(
-            'eraser-active'
-          )
-      );
-
-
-    if (pen) {
-
-      state.mode =
-        'highlight';
-
-
-    } else if (eraser) {
-
-      state.mode =
-        'eraser';
-
-
-    } else {
-
-      /*
-       * Fallback universal.
-       */
-
-      state.mode =
-
-        state.mode === kind
-
-          ? null
-
-          : kind;
-    }
-
-
-    state.range =
-      null;
-
-
-    state.target =
-      null;
-
-
-    setSelectable(
-
-      doc,
-
-      state.mode ===
-        'highlight'
-
-    );
-  }
-
-
-
-  /* ============================================================
-     SALVAR SELEÇÃO
-     ============================================================ */
-
-  function saveSelection(
-    doc,
-    state
-  ) {
-
-    if (
-      state.mode !==
-        'highlight'
-    ) {
-
-      return;
-    }
-
-
-    try {
-
-      const sel =
-        doc.defaultView
-          .getSelection();
-
-
-      if (
-
-        !sel ||
-
-        sel.rangeCount === 0 ||
-
-        sel.isCollapsed
-
-      ) {
-
-        return;
-      }
-
-
-      const range =
-        sel
-          .getRangeAt(0)
-          .cloneRange();
-
-
-      const target =
-        targetForRange(
-          doc,
-          range
-        );
-
-
-      if (!target) {
-
-        return;
-      }
-
-
-      state.range =
-        range;
-
-
-      state.target =
-        target;
-
-
-      observeTarget(
-        doc,
-        state,
-        target
-      );
-
-
-    } catch (_) {}
-  }
-
-
-
-  function getSelectionData(
-    doc,
-    state
+    x,
+    y
   ) {
 
     try {
 
-      const sel =
-        doc.defaultView
-          .getSelection();
-
-
       if (
-
-        sel &&
-        sel.rangeCount &&
-        !sel.isCollapsed
-
+        doc.caretPositionFromPoint
       ) {
 
-        const range =
-          sel
-            .getRangeAt(0)
-            .cloneRange();
-
-
-        const target =
-          targetForRange(
-            doc,
-            range
+        const pos =
+          doc.caretPositionFromPoint(
+            x,
+            y
           );
 
 
-        if (target) {
+        if (pos) {
 
           return {
-            range,
-            target
+            node:
+              pos.offsetNode,
+
+            offset:
+              pos.offset
           };
         }
       }
 
+    } catch (_) {}
+
+
+    try {
+
+      if (
+        doc.caretRangeFromPoint
+      ) {
+
+        const range =
+          doc.caretRangeFromPoint(
+            x,
+            y
+          );
+
+
+        if (range) {
+
+          return {
+            node:
+              range.startContainer,
+
+            offset:
+              range.startOffset
+          };
+        }
+      }
 
     } catch (_) {}
 
 
+    return null;
+  }
+
+
+  function normalizeCaret(caret) {
+    if (
+      !caret ||
+      !caret.node
+    ) {
+      return null;
+    }
+
+
+    let node =
+      caret.node;
+
+    let offset =
+      caret.offset || 0;
+
+
+    if (
+      node.nodeType === 3
+    ) {
+
+      return {
+        node,
+        offset
+      };
+    }
+
+
+    if (
+      node.nodeType === 1
+    ) {
+
+      const children =
+        node.childNodes;
+
+
+      const index =
+        Math.min(
+          offset,
+          Math.max(
+            0,
+            children.length - 1
+          )
+        );
+
+
+      const child =
+        children[index];
+
+
+      if (
+        child &&
+        child.nodeType === 3
+      ) {
+
+        return {
+          node:
+            child,
+
+          offset:
+            0
+        };
+      }
+
+
+      const walker =
+        node.ownerDocument
+          .createTreeWalker(
+            node,
+            4
+          );
+
+
+      const textNode =
+        walker.nextNode();
+
+
+      if (textNode) {
+
+        return {
+          node:
+            textNode,
+
+          offset:
+            0
+        };
+      }
+    }
+
+
+    return null;
+  }
+
+
+  function isWordChar(ch) {
+    if (!ch) return false;
+
+    try {
+
+      return /[\p{L}\p{N}_’'\-]/u
+        .test(ch);
+
+    } catch (_) {
+
+      return /[A-Za-zÀ-ÖØ-öø-ÿ0-9_’'\-]/
+        .test(ch);
+    }
+  }
+
+
+  function wordRangeAtPoint(
+    doc,
+    state,
+    x,
+    y
+  ) {
+
+    const raw =
+      normalizeCaret(
+        caretAtPoint(
+          doc,
+          x,
+          y
+        )
+      );
+
+
+    if (
+      !raw ||
+      !raw.node ||
+      raw.node.nodeType !== 3
+    ) {
+
+      return null;
+    }
+
+
+    const node =
+      raw.node;
+
+
+    const parent =
+      node.parentElement;
+
+
+    const target =
+      targetForElement(
+        state,
+        parent
+      );
+
+
+    if (!target) {
+      return null;
+    }
+
+
+    const text =
+      node.nodeValue || '';
+
+
+    if (!text) {
+      return null;
+    }
+
+
+    let i =
+      Math.max(
+        0,
+        Math.min(
+          raw.offset,
+          text.length - 1
+        )
+      );
+
+
     /*
-     * Fallback caso o navegador
-     * tenha perdido visualmente
-     * a seleção.
+     * Se caiu exatamente depois
+     * da palavra, tenta um caractere
+     * para trás.
      */
 
-    return (
+    if (
+      !isWordChar(text[i]) &&
+      i > 0 &&
+      isWordChar(text[i - 1])
+    ) {
 
-      state.range &&
-      state.target
+      i--;
+    }
 
-        ? {
 
-            range:
-              state.range
-                .cloneRange(),
+    /*
+     * Tocou apenas em espaço/
+     * pontuação.
+     */
 
-            target:
-              state.target
+    if (
+      !isWordChar(text[i])
+    ) {
 
-          }
+      return null;
+    }
 
-        : null
 
+    let start = i;
+    let end = i + 1;
+
+
+    while (
+      start > 0 &&
+      isWordChar(
+        text[start - 1]
+      )
+    ) {
+
+      start--;
+    }
+
+
+    while (
+      end < text.length &&
+      isWordChar(
+        text[end]
+      )
+    ) {
+
+      end++;
+    }
+
+
+    return {
+      node,
+      start,
+      end,
+      target
+    };
+  }
+
+
+  function alreadyMarked(node) {
+    const parent =
+      node &&
+      node.parentElement;
+
+
+    if (!parent) {
+      return null;
+    }
+
+
+    return parent.closest(
+      '.' + MARK_CLASS +
+      ',.hl-word.marked' +
+      ',.medsim-universal-highlight'
     );
   }
 
 
-
-  /* ============================================================
-     CRIAR GRIFO EM UM NÓ DE TEXTO
-     ============================================================ */
-
-  function wrapText(
+  function wrapWord(
     doc,
-    node,
-    start,
-    end
+    info
   ) {
 
     if (
-      !node ||
-      start >= end
+      !info ||
+      !info.node ||
+      info.start >= info.end
+    ) {
+
+      return false;
+    }
+
+
+    /*
+     * Já está amarelo:
+     * não cria outro grifo dentro.
+     */
+
+    if (
+      alreadyMarked(
+        info.node
+      )
     ) {
 
       return false;
@@ -839,18 +787,23 @@
 
 
     let selected =
+      info.node;
 
-      start > 0
 
-        ? node.splitText(
-            start
-          )
+    if (
+      info.start > 0
+    ) {
 
-        : node;
+      selected =
+        selected.splitText(
+          info.start
+        );
+    }
 
 
     const len =
-      end - start;
+      info.end -
+      info.start;
 
 
     if (
@@ -864,14 +817,6 @@
     }
 
 
-    if (
-      !selected.parentNode
-    ) {
-
-      return false;
-    }
-
-
     const mark =
       doc.createElement(
         'span'
@@ -879,13 +824,19 @@
 
 
     /*
-     * Mantemos também hl-word marked
-     * para compatibilidade com os
-     * simuladores que já possuem CSS.
+     * Mantém compatibilidade visual
+     * com os simulados existentes.
      */
 
     mark.className =
-      'hl-word marked medsim-universal-highlight';
+      'hl-word marked ' +
+      MARK_CLASS;
+
+
+    mark.setAttribute(
+      'data-medsim-grifo',
+      '1'
+    );
 
 
     selected.parentNode
@@ -904,293 +855,13 @@
   }
 
 
-
-  /* ============================================================
-     APLICAR GRIFO
-     ============================================================ */
-
-  function applyHighlight(
-    doc,
-    state
-  ) {
-
-    if (
-      state.mode !==
-        'highlight'
-    ) {
-
-      return false;
-    }
-
-
-    const data =
-      getSelectionData(
-        doc,
-        state
-      );
-
-
-    if (!data) {
-
-      return false;
-    }
-
-
-    const {
-      range,
-      target
-    } = data;
-
-
-    const nodes =
-      [];
-
-
-    /*
-     * Percorre os nós de texto que
-     * fazem parte da seleção.
-     */
-
-    const walker =
-      doc.createTreeWalker(
-
-        target,
-
-        4,
-
-        {
-
-          acceptNode(node) {
-
-            if (
-              !node.nodeValue
-            ) {
-
-              return 2;
-            }
-
-
-            /*
-             * Evita grifar novamente
-             * algo já marcado.
-             */
-
-            if (
-
-              node.parentElement
-
-              &&
-
-              node.parentElement.closest(
-
-                '.medsim-universal-highlight,' +
-                '.hl-word.marked'
-
-              )
-
-            ) {
-
-              return 2;
-            }
-
-
-            try {
-
-              return range
-                .intersectsNode(
-                  node
-                )
-
-                ? 1
-                : 2;
-
-
-            } catch (_) {
-
-              return 2;
-            }
-          }
-
-        }
-
-      );
-
-
-    let node;
-
-
-    while (
-      (
-        node =
-          walker.nextNode()
-      )
-    ) {
-
-      nodes.push(
-        node
-      );
-    }
-
-
-
-    const tasks =
-      nodes
-
-        .map(
-          n => {
-
-            let start =
-
-              range.startContainer === n
-
-                ? range.startOffset
-
-                : 0;
-
-
-            let end =
-
-              range.endContainer === n
-
-                ? range.endOffset
-
-                : n.nodeValue.length;
-
-
-            start =
-              Math.max(
-
-                0,
-
-                Math.min(
-
-                  start,
-
-                  n.nodeValue.length
-
-                )
-
-              );
-
-
-            end =
-              Math.max(
-
-                start,
-
-                Math.min(
-
-                  end,
-
-                  n.nodeValue.length
-
-                )
-
-              );
-
-
-            return {
-
-              node:
-                n,
-
-              start,
-
-              end
-
-            };
-
-          }
-        )
-
-        .filter(
-          x =>
-            x.start <
-            x.end
-        );
-
-
-    let changed =
-      false;
-
-
-    /*
-     * De trás para frente para evitar
-     * invalidar os offsets anteriores.
-     */
-
-    for (
-      let i =
-        tasks.length - 1;
-
-      i >= 0;
-
-      i--
-    ) {
-
-      const t =
-        tasks[i];
-
-
-      if (
-
-        wrapText(
-
-          doc,
-
-          t.node,
-
-          t.start,
-
-          t.end
-
-        )
-
-      ) {
-
-        changed =
-          true;
-      }
-    }
-
-
-    if (changed) {
-
-      try {
-
-        doc.defaultView
-          .getSelection()
-          .removeAllRanges();
-
-      } catch (_) {}
-
-
-      state.range =
-        null;
-
-
-      state.target =
-        null;
-    }
-
-
-    return changed;
-  }
-
-
-
-  /* ============================================================
-     APAGAR GRIFO
-     ============================================================ */
-
-  function erase(mark) {
-
+  function unwrap(mark) {
     if (
       !mark ||
       !mark.parentNode
     ) {
 
-      return;
+      return false;
     }
 
 
@@ -1199,8 +870,9 @@
 
 
     /*
-     * Remove somente o span,
-     * preservando o texto.
+     * Tira somente o amarelo.
+     * O texto permanece exatamente
+     * no mesmo lugar.
      */
 
     while (
@@ -1208,11 +880,8 @@
     ) {
 
       parent.insertBefore(
-
         mark.firstChild,
-
         mark
-
       );
     }
 
@@ -1223,105 +892,417 @@
 
 
     parent.normalize();
+
+
+    return true;
   }
 
 
+  function markAtPoint(
+    doc,
+    state,
+    x,
+    y
+  ) {
 
-  /* ============================================================
-     INSTALAR DENTRO DO SIMULADO
-     ============================================================ */
+    const info =
+      wordRangeAtPoint(
+        doc,
+        state,
+        x,
+        y
+      );
 
-  function attachDocument(doc) {
+
+    if (!info) {
+      return false;
+    }
+
+
+    return wrapWord(
+      doc,
+      info
+    );
+  }
+
+
+  function eraseAtPoint(
+    doc,
+    state,
+    x,
+    y
+  ) {
+
+    let mark =
+      null;
+
+
+    /*
+     * Primeiro tenta descobrir
+     * diretamente qual span amarelo
+     * está debaixo do dedo/mouse.
+     */
+
+    try {
+
+      const stack =
+        doc.elementsFromPoint(
+          x,
+          y
+        ) || [];
+
+
+      for (
+        const el
+        of stack
+      ) {
+
+        if (
+          !el ||
+          !el.closest
+        ) {
+          continue;
+        }
+
+
+        const candidate =
+          el.closest(
+            '.' + MARK_CLASS +
+            ',.hl-word.marked' +
+            ',.medsim-universal-highlight'
+          );
+
+
+        if (
+          candidate &&
+          targetForElement(
+            state,
+            candidate
+          )
+        ) {
+
+          mark =
+            candidate;
+
+          break;
+        }
+      }
+
+    } catch (_) {}
+
+
+    /*
+     * Fallback por posição do texto.
+     */
+
+    if (!mark) {
+
+      const caret =
+        normalizeCaret(
+          caretAtPoint(
+            doc,
+            x,
+            y
+          )
+        );
+
+
+      if (
+        caret &&
+        caret.node &&
+        caret.node.parentElement
+      ) {
+
+        const candidate =
+          caret.node
+            .parentElement
+            .closest(
+              '.' + MARK_CLASS +
+              ',.hl-word.marked' +
+              ',.medsim-universal-highlight'
+            );
+
+
+        if (
+          candidate &&
+          targetForElement(
+            state,
+            candidate
+          )
+        ) {
+
+          mark =
+            candidate;
+        }
+      }
+    }
+
+
+    return mark
+      ? unwrap(mark)
+      : false;
+  }
+
+
+  function paintPoint(
+    doc,
+    state,
+    x,
+    y
+  ) {
 
     if (
+      state.mode ===
+      'highlight'
+    ) {
 
+      return markAtPoint(
+        doc,
+        state,
+        x,
+        y
+      );
+    }
+
+
+    if (
+      state.mode ===
+      'eraser'
+    ) {
+
+      return eraseAtPoint(
+        doc,
+        state,
+        x,
+        y
+      );
+    }
+
+
+    return false;
+  }
+
+
+  /*
+   * Faz vários pontos intermediários
+   * entre uma posição e outra.
+   *
+   * Isso evita "pular palavras" quando
+   * o dedo é arrastado rapidamente.
+   */
+
+  function paintSegment(
+    doc,
+    state,
+    x1,
+    y1,
+    x2,
+    y2
+  ) {
+
+    if (
+      x1 == null ||
+      y1 == null
+    ) {
+
+      paintPoint(
+        doc,
+        state,
+        x2,
+        y2
+      );
+
+      return;
+    }
+
+
+    const dx =
+      x2 - x1;
+
+    const dy =
+      y2 - y1;
+
+
+    const distance =
+      Math.hypot(
+        dx,
+        dy
+      );
+
+
+    const steps =
+      Math.max(
+        1,
+        Math.ceil(
+          distance / 7
+        )
+      );
+
+
+    for (
+      let i = 1;
+      i <= steps;
+      i++
+    ) {
+
+      const t =
+        i / steps;
+
+
+      paintPoint(
+        doc,
+        state,
+
+        x1 + dx * t,
+        y1 + dy * t
+      );
+    }
+  }
+
+
+  function looksLikeNavigation(
+    control
+  ) {
+
+    if (!control) {
+      return false;
+    }
+
+
+    const text =
+      norm([
+        control.id,
+        control.className,
+
+        control.getAttribute &&
+          control.getAttribute(
+            'title'
+          ),
+
+        control.getAttribute &&
+          control.getAttribute(
+            'aria-label'
+          ),
+
+        control.textContent
+      ].join(' '));
+
+
+    return (
+      /proxim|anterior|prev|next|questao|question|nav-btn|finalizar|encerrar|corrigir|resultado|voltar|hub/
+        .test(text)
+    );
+  }
+
+
+  function syncFromNative(
+    doc,
+    state
+  ) {
+
+    const targets =
+      collectPaintables(doc);
+
+
+    const pen =
+      targets.some(
+        el =>
+          el.classList.contains(
+            'pen-active'
+          )
+      );
+
+
+    const eraser =
+      targets.some(
+        el =>
+          el.classList.contains(
+            'eraser-active'
+          )
+      );
+
+
+    if (pen) {
+
+      state.mode =
+        'highlight';
+
+    } else if (eraser) {
+
+      state.mode =
+        'eraser';
+
+    } else {
+
+      state.mode =
+        null;
+    }
+
+
+    refreshPaintables(
+      doc,
+      state
+    );
+  }
+
+
+  function install(doc) {
+    if (
       !doc ||
-
       !doc.documentElement ||
-
       !doc.body ||
-
-      states.has(doc)
-
+      docs.has(doc)
     ) {
 
       return;
     }
 
 
-    injectStyle(
-      doc
-    );
+    injectStyle(doc);
 
 
     const state = {
-
       mode:
         null,
 
-      range:
+      painting:
+        false,
+
+      pointerId:
         null,
 
-      target:
+      lastX:
         null,
 
-      observed:
-        new WeakSet()
+      lastY:
+        null,
 
+      paintables:
+        new Set()
     };
 
 
-    states.set(
+    docs.set(
       doc,
       state
     );
 
 
-    observeKnownTargets(
-      doc,
-      state
-    );
-
-
-
-    /* --------------------------------------------------------
-       SELEÇÃO
-       -------------------------------------------------------- */
+    /*
+     * BOTÕES GRIFAR / BORRACHA
+     */
 
     doc.addEventListener(
-
-      'selectionchange',
-
-      () => {
-
-        saveSelection(
-          doc,
-          state
-        );
-
-      }
-
-    );
-
-
-
-    /* --------------------------------------------------------
-       CLIQUE NOS BOTÕES / BORRACHA
-       -------------------------------------------------------- */
-
-    doc.addEventListener(
-
       'click',
 
       event => {
 
         const control =
-
           event.target &&
           event.target.closest
 
             ? event.target.closest(
-                CONTROLS
+                BUTTON_SELECTOR
               )
 
             : null;
@@ -1333,31 +1314,28 @@
           );
 
 
-        /*
-         * GRIFAR / BORRACHA
-         */
-
         if (kind) {
 
-          observeKnownTargets(
+          /*
+           * Controlamos somente a ação.
+           * O onclick original continua
+           * funcionando e mantém a
+           * estética do botão.
+           */
+
+          setMode(
             doc,
-            state
+            state,
+            kind
           );
 
-
-          /*
-           * Espera o onclick original
-           * alterar pen-active /
-           * eraser-active.
-           */
 
           setTimeout(
             () => {
 
-              syncMode(
+              refreshPaintables(
                 doc,
-                state,
-                kind
+                state
               );
 
             },
@@ -1369,204 +1347,109 @@
         }
 
 
-
         /*
-         * BORRACHA
+         * Se trocou de questão/tela,
+         * acompanha o estado visual
+         * original do simulador.
          */
 
         if (
-          state.mode ===
-            'eraser'
-        ) {
-
-          const mark =
-
-            event.target &&
-            event.target.closest
-
-              ? event.target.closest(
-
-                  '.medsim-universal-highlight,' +
-                  '.hl-word.marked'
-
-                )
-
-              : null;
-
-
-          if (
-            mark &&
-            targetForNode(
-              doc,
-              mark
-            )
-          ) {
-
-            event.preventDefault();
-
-            event.stopPropagation();
-
-
-            erase(
-              mark
-            );
-          }
-        }
-
-      }
-
-    );
-
-
-
-    /* --------------------------------------------------------
-       INÍCIO DA SELEÇÃO
-       -------------------------------------------------------- */
-
-    doc.addEventListener(
-
-      'mousedown',
-
-      event => {
-
-        if (
-          state.mode !==
-            'highlight'
-        ) {
-
-          return;
-        }
-
-
-        const target =
-          targetForNode(
-
-            doc,
-
-            event.target
-
-          );
-
-
-        if (target) {
-
-          observeTarget(
-            doc,
-            state,
-            target
-          );
-
-
-          /*
-           * Mesmo que o simulador tenha
-           * user-select:none.
-           */
-
-          target.classList.add(
-            'medsim-grifo-selectable'
-          );
-        }
-
-      },
-
-      true
-
-    );
-
-
-
-    /* --------------------------------------------------------
-       APLICAR GRIFO AO SOLTAR O MOUSE
-
-       CAPTURE = true:
-       executa antes da lógica quebrada
-       dos simuladores.
-       -------------------------------------------------------- */
-
-    doc.addEventListener(
-
-      'mouseup',
-
-      event => {
-
-        if (
-          state.mode !==
-            'highlight'
-        ) {
-
-          return;
-        }
-
-
-        if (
-
-          !targetForNode(
-            doc,
-            event.target
+          control &&
+          looksLikeNavigation(
+            control
           )
-
-          &&
-
-          !state.target
-
-        ) {
-
-          return;
-        }
-
-
-        saveSelection(
-          doc,
-          state
-        );
-
-
-        applyHighlight(
-          doc,
-          state
-        );
-
-      },
-
-      true
-
-    );
-
-
-
-    /* --------------------------------------------------------
-       TOUCH / CELULAR
-       -------------------------------------------------------- */
-
-    doc.addEventListener(
-
-      'touchend',
-
-      () => {
-
-        if (
-          state.mode ===
-            'highlight'
         ) {
 
           setTimeout(
             () => {
 
-              saveSelection(
-                doc,
-                state
-              );
-
-
-              applyHighlight(
+              syncFromNative(
                 doc,
                 state
               );
 
             },
-            80
+            0
           );
         }
+
+      },
+
+      true
+    );
+
+
+    /*
+     * TOCOU / CLICOU NO TEXTO
+     */
+
+    doc.addEventListener(
+      'pointerdown',
+
+      event => {
+
+        if (!state.mode) {
+          return;
+        }
+
+
+        const target =
+          targetForElement(
+            state,
+            event.target
+          );
+
+
+        if (!target) {
+          return;
+        }
+
+
+        state.painting =
+          true;
+
+
+        state.pointerId =
+          event.pointerId;
+
+
+        state.lastX =
+          event.clientX;
+
+
+        state.lastY =
+          event.clientY;
+
+
+        try {
+
+          target.setPointerCapture(
+            event.pointerId
+          );
+
+        } catch (_) {}
+
+
+        /*
+         * Impede seleção azul,
+         * menu de texto ou rolagem
+         * enquanto está pintando.
+         */
+
+        event.preventDefault();
+
+
+        /*
+         * Um simples toque/click já
+         * marca ou apaga uma palavra.
+         */
+
+        paintPoint(
+          doc,
+          state,
+          event.clientX,
+          event.clientY
+        );
 
       },
 
@@ -1575,20 +1458,178 @@
           true,
 
         passive:
-          true
+          false
+      }
+    );
+
+
+    /*
+     * ARRASTAR O DEDO / MOUSE
+     */
+
+    doc.addEventListener(
+      'pointermove',
+
+      event => {
+
+        if (
+          !state.mode ||
+          !state.painting ||
+          event.pointerId !==
+            state.pointerId
+        ) {
+
+          return;
+        }
+
+
+        event.preventDefault();
+
+
+        paintSegment(
+          doc,
+          state,
+
+          state.lastX,
+          state.lastY,
+
+          event.clientX,
+          event.clientY
+        );
+
+
+        state.lastX =
+          event.clientX;
+
+
+        state.lastY =
+          event.clientY;
+
+      },
+
+      {
+        capture:
+          true,
+
+        passive:
+          false
+      }
+    );
+
+
+    function finishPointer(
+      event
+    ) {
+
+      if (
+        !state.painting ||
+        event.pointerId !==
+          state.pointerId
+      ) {
+
+        return;
       }
 
+
+      if (state.mode) {
+
+        event.preventDefault();
+
+
+        paintSegment(
+          doc,
+          state,
+
+          state.lastX,
+          state.lastY,
+
+          event.clientX,
+          event.clientY
+        );
+      }
+
+
+      state.painting =
+        false;
+
+
+      state.pointerId =
+        null;
+
+
+      state.lastX =
+        null;
+
+
+      state.lastY =
+        null;
+    }
+
+
+    doc.addEventListener(
+      'pointerup',
+      finishPointer,
+      {
+        capture:
+          true,
+
+        passive:
+          false
+      }
+    );
+
+
+    doc.addEventListener(
+      'pointercancel',
+      finishPointer,
+      {
+        capture:
+          true,
+
+        passive:
+          false
+      }
+    );
+
+
+    /*
+     * A implementação antiga de alguns
+     * simulados tenta selecionar texto.
+     *
+     * Enquanto nossa ferramenta estiver
+     * ativa, bloqueamos essa seleção.
+     */
+
+    doc.addEventListener(
+      'selectstart',
+
+      event => {
+
+        if (!state.mode) {
+          return;
+        }
+
+
+        const target =
+          targetForElement(
+            state,
+            event.target
+          );
+
+
+        if (target) {
+
+          event.preventDefault();
+        }
+
+      },
+
+      true
     );
   }
 
 
-
-  /* ============================================================
-     IFRAME
-     ============================================================ */
-
   function attachFrame(frame) {
-
     if (
       !frame ||
       frames.has(frame)
@@ -1598,132 +1639,92 @@
     }
 
 
-    frames.add(
-      frame
-    );
+    frames.add(frame);
 
 
     frame.addEventListener(
-
       'load',
 
       () => {
 
         try {
 
-          attachDocument(
+          install(
             frame.contentDocument
           );
 
         } catch (_) {}
 
       }
-
     );
 
 
     try {
 
       if (
-
-        frame.contentDocument
-
-        &&
-
+        frame.contentDocument &&
         frame.contentDocument
           .readyState !==
           'loading'
-
       ) {
 
-        attachDocument(
+        install(
           frame.contentDocument
         );
       }
-
 
     } catch (_) {}
   }
 
 
-
-  /* ============================================================
-     PROCURAR IFRAMES
-     ============================================================ */
-
   function scan() {
-
     document
       .querySelectorAll(
         'iframe'
       )
-
       .forEach(
         attachFrame
       );
   }
 
 
-
-  /* ============================================================
-     INICIAR
-     ============================================================ */
-
   function start() {
-
     scan();
 
 
-    /*
-     * Apenas verifica se apareceu
-     * algum novo iframe.
-     */
-
     setInterval(
-
       scan,
-
       1000
-
     );
 
 
     window.MedSimGrifoBorracha = {
-
       version:
         VERSION,
 
       rescan:
         scan
-
     };
 
 
     console.info(
-
-      '[MedSim] Grifar/Borracha universal v1 ativo.'
-
+      '[MedSim] Grifar/Borracha universal v2 ativo.'
     );
   }
 
 
-
   if (
     document.readyState ===
-      'loading'
+    'loading'
   ) {
 
     document.addEventListener(
-
       'DOMContentLoaded',
-
       start,
-
       {
         once:
           true
       }
-
     );
 
   } else {
