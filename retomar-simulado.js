@@ -1,13 +1,46 @@
 (function () {
   'use strict';
 
-  const STORE_KEY = 'medsim_resume_v2';
-  const BUTTON_ID = 'medsim-resume-safe-button';
-  const MODAL_ID = 'medsim-resume-safe-modal';
-  const STYLE_ID = 'medsim-resume-safe-style-v3';
+  /* ============================================================
+     MEDSIM — RETOMAR SIMULADO v4 — HUB
 
-  let active = null;
-  let pendingAction = null;
+     Este arquivo agora faz SOMENTE:
+
+     1. Detectar e salvar simulados em andamento
+     2. Mostrar "Retomar simulado" no Hub
+     3. Listar os simulados em andamento
+     4. Abrir o simulado escolhido
+     5. Descartar um progresso salvo
+
+     IMPORTANTE:
+
+     Ele NÃO mostra mais:
+     - Continuar de onde parei
+     - Recomeçar
+
+     dentro do simulado.
+
+     Isso será responsabilidade exclusiva de:
+
+     retomar-simulado-interno.js
+     ============================================================ */
+
+
+  const STORE_KEY =
+    'medsim_resume_v2';
+
+  const BUTTON_ID =
+    'medsim-resume-safe-button';
+
+  const MODAL_ID =
+    'medsim-resume-safe-modal';
+
+  const STYLE_ID =
+    'medsim-resume-safe-style-v4';
+
+
+  let active =
+    null;
 
 
   /* ============================================================
@@ -16,21 +49,31 @@
 
   function keyPath(value) {
 
-    if (!value) return '';
+    if (!value) {
+      return '';
+    }
+
 
     try {
 
-      const u =
+      const url =
         new URL(
           String(value),
           location.href
         );
 
+
       return decodeURIComponent(
-        u.pathname
+        url.pathname
       )
-        .replace(/^\/+/, '')
+
+        .replace(
+          /^\/+/,
+          ''
+        )
+
         .toLowerCase();
+
 
     } catch (_) {
 
@@ -38,11 +81,20 @@
 
         .split(/[?#]/)[0]
 
-        .replace(/\\/g, '/')
+        .replace(
+          /\\/g,
+          '/'
+        )
 
-        .replace(/^\.\//, '')
+        .replace(
+          /^\.\//,
+          ''
+        )
 
-        .replace(/^\/+/, '')
+        .replace(
+          /^\/+/,
+          ''
+        )
 
         .toLowerCase();
     }
@@ -50,28 +102,37 @@
 
 
   /*
-   * Diferente de keyPath(),
-   * este mantém maiúsculas/minúsculas.
+   * Mantém maiúsculas/minúsculas.
    *
-   * É o caminho REAL usado para abrir
-   * o arquivo no GitHub Pages.
+   * Esse é o caminho REAL usado
+   * para abrir o arquivo.
    */
+
   function realPath(value) {
 
-    if (!value) return '';
+    if (!value) {
+      return '';
+    }
+
 
     try {
 
-      const u =
+      const url =
         new URL(
           String(value),
           location.href
         );
 
+
       return decodeURIComponent(
-        u.pathname
+        url.pathname
       )
-        .replace(/^\/+/, '');
+
+        .replace(
+          /^\/+/,
+          ''
+        );
+
 
     } catch (_) {
 
@@ -83,13 +144,23 @@
 
             .split(/[?#]/)[0]
 
-            .replace(/\\/g, '/')
+            .replace(
+              /\\/g,
+              '/'
+            )
 
-            .replace(/^\.\//, '')
+            .replace(
+              /^\.\//,
+              ''
+            )
 
-            .replace(/^\/+/, '')
+            .replace(
+              /^\/+/,
+              ''
+            )
 
         );
+
 
       } catch (_) {
 
@@ -97,11 +168,20 @@
 
           .split(/[?#]/)[0]
 
-          .replace(/\\/g, '/')
+          .replace(
+            /\\/g,
+            '/'
+          )
 
-          .replace(/^\.\//, '')
+          .replace(
+            /^\.\//,
+            ''
+          )
 
-          .replace(/^\/+/, '');
+          .replace(
+            /^\/+/,
+            ''
+          );
       }
     }
   }
@@ -110,11 +190,15 @@
   function basename(value) {
 
     return (
+
       realPath(value)
         .split('/')
         .pop()
 
-      || ''
+      ||
+
+      ''
+
     );
   }
 
@@ -124,6 +208,7 @@
     return String(
       value || ''
     )
+
       .normalize('NFD')
 
       .replace(
@@ -143,59 +228,84 @@
 
 
   /* ============================================================
-     MATÉRIA
+     DISCIPLINA
      ============================================================ */
 
   function subjectFrom(path) {
 
-    const t =
+    const text =
       normText(path);
 
 
-    if (/farmaco/.test(t)) {
+    if (
+      /farmaco/.test(text)
+    ) {
+
       return 'Farmacologia';
     }
 
 
     if (
       /fisiologia|endocrino|hipofise|pancreatic/
-        .test(t)
+        .test(text)
     ) {
+
       return 'Fisiologia';
     }
 
 
-    if (/imuno/.test(t)) {
+    if (
+      /imuno/.test(text)
+    ) {
+
       return 'Imunologia';
     }
 
 
-    if (/micro/.test(t)) {
+    if (
+      /micro/.test(text)
+    ) {
+
       return 'Microbiologia';
     }
 
 
-    if (/parasito/.test(t)) {
+    if (
+      /parasito/.test(text)
+    ) {
+
       return 'Parasitologia';
     }
 
 
-    if (/patologia/.test(t)) {
+    if (
+      /patologia/.test(text)
+    ) {
+
       return 'Patologia';
     }
 
 
-    if (/propedeu/.test(t)) {
+    if (
+      /propedeu/.test(text)
+    ) {
+
       return 'Propedêutica';
     }
 
 
-    if (/psico/.test(t)) {
+    if (
+      /psico/.test(text)
+    ) {
+
       return 'Psicomed';
     }
 
 
-    if (/vigil/.test(t)) {
+    if (
+      /vigil/.test(text)
+    ) {
+
       return 'Vigilância em Saúde';
     }
 
@@ -205,7 +315,7 @@
 
 
   /* ============================================================
-     NOME AMIGÁVEL DO SIMULADO
+     NOME BONITO DO SIMULADO
      ============================================================ */
 
   function prettifyWords(text) {
@@ -257,7 +367,7 @@
         )
 
         .replace(
-          /[_]+/g,
+          /_/g,
           ' '
         )
 
@@ -275,8 +385,8 @@
 
 
     /*
-     * Remove o nome da disciplina
-     * do começo.
+     * Remove a disciplina
+     * do começo do nome.
      */
 
     name =
@@ -290,22 +400,12 @@
 
 
     /*
-     * Remove identificadores internos:
-     *
-     * m5
-     * b4
-     * p2
-     * aula
-     * números de aula
+     * Remove códigos internos
+     * como M5, B4, P2 etc.
      */
 
     name =
       name
-
-        .replace(
-          /^\s*(aula\s*)?/i,
-          ''
-        )
 
         .replace(
           /^\s*(m\d+|b\d+|p\d+)\b\s*/i,
@@ -313,7 +413,7 @@
         )
 
         .replace(
-          /^\s*(aula)\b\s*/i,
+          /^\s*aula\b\s*/i,
           ''
         )
 
@@ -329,11 +429,6 @@
 
         .trim();
 
-
-    /*
-     * Caso fique apenas "2025",
-     * vira "Simulado 2025".
-     */
 
     if (
       /^20\d{2}$/.test(name)
@@ -364,7 +459,7 @@
 
   function formatDate(iso) {
 
-    const d =
+    const date =
       new Date(
         iso || ''
       );
@@ -372,7 +467,7 @@
 
     if (
       Number.isNaN(
-        d.getTime()
+        date.getTime()
       )
     ) {
 
@@ -380,7 +475,7 @@
     }
 
 
-    return d.toLocaleString(
+    return date.toLocaleString(
 
       'pt-BR',
 
@@ -399,7 +494,7 @@
 
 
   /* ============================================================
-     BANCO
+     ARMAZENAMENTO
      ============================================================ */
 
   function loadStore() {
@@ -413,7 +508,9 @@
             STORE_KEY
           )
 
-          || '{}'
+          ||
+
+          '{}'
 
         );
 
@@ -421,8 +518,7 @@
       return (
 
         raw &&
-        typeof raw ===
-          'object' &&
+        typeof raw === 'object' &&
         !Array.isArray(raw)
 
           ? raw
@@ -430,6 +526,7 @@
           : {}
 
       );
+
 
     } catch (_) {
 
@@ -440,30 +537,32 @@
 
   function saveStore(store) {
 
-    localStorage.setItem(
+    try {
 
-      STORE_KEY,
+      localStorage.setItem(
 
-      JSON.stringify(store)
+        STORE_KEY,
 
-    );
+        JSON.stringify(
+          store
+        )
+
+      );
+
+
+    } catch (error) {
+
+      console.warn(
+
+        '[MedSim] Não foi possível salvar o progresso.',
+
+        error
+
+      );
+    }
 
 
     updateButton();
-  }
-
-
-  function getRecord(path) {
-
-    return (
-
-      loadStore()[
-        keyPath(path)
-      ]
-
-      || null
-
-    );
   }
 
 
@@ -481,7 +580,9 @@
       record;
 
 
-    saveStore(store);
+    saveStore(
+      store
+    );
   }
 
 
@@ -496,7 +597,9 @@
     ];
 
 
-    saveStore(store);
+    saveStore(
+      store
+    );
   }
 
 
@@ -510,6 +613,7 @@
 
       .filter(
         record =>
+
           record &&
           record.path
       )
@@ -533,7 +637,7 @@
 
 
   /* ============================================================
-     IFRAME
+     IFRAME / SIMULADO ABERTO
      ============================================================ */
 
   function framePath(frame) {
@@ -544,7 +648,9 @@
         'src'
       )
 
-      || ''
+      ||
+
+      ''
 
     );
   }
@@ -569,7 +675,23 @@
     try {
 
       const style =
-        getComputedStyle(frame);
+        getComputedStyle(
+          frame
+        );
+
+
+      if (
+        style.display ===
+          'none'
+
+        ||
+
+        style.visibility ===
+          'hidden'
+      ) {
+
+        return false;
+      }
 
 
       const rect =
@@ -578,23 +700,11 @@
 
       return (
 
-        style.display !==
-          'none'
-
-        &&
-
-        style.visibility !==
-          'hidden'
-
-        &&
-
-        rect.width > 0
-
-        &&
-
+        rect.width > 0 &&
         rect.height > 0
 
       );
+
 
     } catch (_) {
 
@@ -628,7 +738,7 @@
 
 
   /* ============================================================
-     JAVASCRIPT INTERNO DO SIMULADO
+     JAVASCRIPT INTERNO
      ============================================================ */
 
   function scriptText(doc) {
@@ -682,20 +792,16 @@
 
   /* ============================================================
      STATE NATIVO
-
-     Exemplo:
-     simulado_endo_state
-     simulado_farma_state
      ============================================================ */
 
   function discoverStateKeys(doc) {
 
-    const text =
-      scriptText(doc);
-
-
     const found =
       new Set();
+
+
+    const text =
+      scriptText(doc);
 
 
     const regex =
@@ -718,13 +824,10 @@
     }
 
 
-    /*
-     * Se conhecemos o history,
-     * também testamos o state correspondente.
-     */
-
     const history =
-      discoverHistoryKey(doc);
+      discoverHistoryKey(
+        doc
+      );
 
 
     if (history) {
@@ -732,8 +835,11 @@
       found.add(
 
         history.replace(
+
           /_history$/i,
+
           '_state'
+
         )
 
       );
@@ -775,103 +881,6 @@
 
 
     return output;
-  }
-
-
-  function applyNativeState(
-    nativeState
-  ) {
-
-    if (
-      !nativeState ||
-      typeof nativeState !==
-        'object'
-    ) {
-
-      return;
-    }
-
-
-    Object.entries(
-      nativeState
-    )
-    .forEach(
-      ([key, value]) => {
-
-        /*
-         * Segurança:
-         * apenas state de simulados.
-         */
-
-        if (
-
-          /^simulado_[a-z0-9_-]+_state$/i
-            .test(key)
-
-          &&
-
-          typeof value ===
-            'string'
-
-        ) {
-
-          localStorage.setItem(
-            key,
-            value
-          );
-        }
-
-      }
-    );
-  }
-
-
-  function clearNativeState(
-    doc,
-    record
-  ) {
-
-    const keys =
-      new Set(
-
-        discoverStateKeys(
-          doc
-        )
-
-      );
-
-
-    Object.keys(
-      (
-        record &&
-        record.nativeState
-      )
-
-      || {}
-    )
-    .forEach(
-      key =>
-        keys.add(key)
-    );
-
-
-    keys.forEach(
-      key => {
-
-        if (
-
-          /^simulado_[a-z0-9_-]+_state$/i
-            .test(key)
-
-        ) {
-
-          localStorage.removeItem(
-            key
-          );
-        }
-
-      }
-    );
   }
 
 
@@ -926,6 +935,7 @@
 
       );
 
+
     } catch (_) {
 
       return false;
@@ -959,6 +969,7 @@
 
       .map(
         element =>
+
           (
             element.textContent ||
             ''
@@ -1027,18 +1038,20 @@
     }
 
 
-    const body =
+    const bodyText =
 
       (
         doc.body &&
         doc.body.innerText
       )
 
-      || '';
+      ||
+
+      '';
 
 
     const match =
-      body.match(
+      bodyText.match(
 
         /quest(?:ão|ao)\s*(\d+)(?:\s*(?:de|\/)\s*(\d+))?/i
 
@@ -1098,7 +1111,7 @@
 
 
   /* ============================================================
-     RESPOSTAS
+     CAMPOS / RESPOSTAS
      ============================================================ */
 
   function captureFields(doc) {
@@ -1184,8 +1197,7 @@
 
             checked:
 
-              'checked' in
-                element
+              'checked' in element
 
                 ? Boolean(
                     element.checked
@@ -1199,518 +1211,16 @@
   }
 
 
-  function findField(
-    doc,
-    saved
-  ) {
-
-    if (
-      saved.id
-    ) {
-
-      const element =
-        doc.getElementById(
-          saved.id
-        );
-
-
-      if (element) {
-        return element;
-      }
-    }
-
-
-    if (
-      saved.name
-    ) {
-
-      const same = [
-
-        ...doc.getElementsByName(
-          saved.name
-        )
-
-      ];
-
-
-      if (
-
-        saved.nameIndex >=
-          0
-
-        &&
-
-        same[
-          saved.nameIndex
-        ]
-
-      ) {
-
-        return same[
-          saved.nameIndex
-        ];
-      }
-
-
-      if (
-        same[0]
-      ) {
-
-        return same[0];
-      }
-    }
-
-
-    const fields = [
-
-      ...doc.querySelectorAll(
-        'input, textarea, select'
-      )
-
-    ]
-
-      .filter(
-        element =>
-
-          ![
-
-            'button',
-            'submit',
-            'reset',
-            'file',
-            'password',
-            'hidden'
-
-          ].includes(
-
-            (
-              element.type ||
-              ''
-            ).toLowerCase()
-
-          )
-      );
-
-
-    return (
-
-      fields[
-        saved.index
-      ]
-
-      || null
-
-    );
-  }
-
-
-  function restoreFields(
-    doc,
-    record
-  ) {
-
-    (
-      record.fields ||
-      []
-    )
-    .forEach(
-      saved => {
-
-        const element =
-          findField(
-            doc,
-            saved
-          );
-
-
-        if (!element) {
-          return;
-        }
-
-
-        try {
-
-          if (
-
-            saved.checked !==
-              null
-
-            &&
-
-            'checked' in
-              element
-
-          ) {
-
-            element.checked =
-              saved.checked;
-          }
-
-
-          if (
-
-            saved.value !==
-              undefined
-
-            &&
-
-            saved.type !==
-              'radio'
-
-            &&
-
-            saved.type !==
-              'checkbox'
-
-          ) {
-
-            element.value =
-              saved.value;
-          }
-
-
-          /*
-           * Faz o JS nativo perceber
-           * a restauração.
-           */
-
-          element.dispatchEvent(
-
-            new Event(
-
-              'input',
-
-              {
-                bubbles:
-                  true
-              }
-
-            )
-
-          );
-
-
-          element.dispatchEvent(
-
-            new Event(
-
-              'change',
-
-              {
-                bubbles:
-                  true
-              }
-
-            )
-
-          );
-
-
-        } catch (_) {}
-
-      }
-    );
-  }
-
-
   /* ============================================================
-     PRÓXIMA / ANTERIOR
-
-     Só usado quando o usuário clicou
-     explicitamente em CONTINUAR.
+     SALVAR PROGRESSO
      ============================================================ */
 
-  function findNavButton(
-    doc,
-    direction
-  ) {
-
-    const nodes = [
-
-      ...doc.querySelectorAll(
-        'button, a, [role="button"]'
-      )
-
-    ].filter(
-      visible
-    );
-
-
-    const regex =
-
-      direction ===
-        'next'
-
-        ? /^(proxima|proximo|próxima|próximo|avancar|avançar|seguinte|next)\b/i
-
-        : /^(anterior|questao anterior|questão anterior|voltar questao|voltar questão|prev|previous)\b/i;
-
-
-    return (
-
-      nodes.find(
-        element =>
-
-          regex.test(
-
-            (
-              element.textContent
-
-              ||
-
-              element.getAttribute(
-                'aria-label'
-              )
-
-              ||
-
-              ''
-            ).trim()
-
-          )
-      )
-
-      || null
-
-    );
-  }
-
-
-  async function navigateToSavedQuestion(
-    doc,
-    record
-  ) {
-
-    const target =
-      Number(
-
-        record.questionNumber
-
-        ||
-
-        (
-          record.question &&
-          record.question.number
-        )
-
-        ||
-
-        0
-
-      );
-
-
-    if (!target) {
-      return;
-    }
-
-
-    let current =
-      questionInfo(
-        doc
-      ).number;
-
+  function captureActive(force) {
 
     if (
-      !current ||
-      current === target
-    ) {
-
-      return;
-    }
-
-
-    let guard =
-      0;
-
-
-    while (
-
-      current
-
-      &&
-
-      current !== target
-
-      &&
-
-      guard++ < 80
-
-    ) {
-
-      const button =
-        findNavButton(
-
-          doc,
-
-          current < target
-
-            ? 'next'
-
-            : 'prev'
-
-        );
-
-
-      if (!button) {
-        break;
-      }
-
-
-      button.click();
-
-
-      await new Promise(
-        resolve =>
-          setTimeout(
-            resolve,
-            80
-          )
-      );
-
-
-      const next =
-        questionInfo(
-          doc
-        ).number;
-
-
-      if (
-        !next ||
-        next === current
-      ) {
-
-        break;
-      }
-
-
-      current =
-        next;
-    }
-  }
-
-
-  /* ============================================================
-     RESTAURAÇÃO COMPLETA
-     ============================================================ */
-
-  async function restoreUniversal(
-    frame,
-    record
-  ) {
-
-    let doc;
-
-
-    try {
-
-      doc =
-        frame.contentDocument;
-
-    } catch (_) {
-
-      return;
-    }
-
-
-    if (
-      !doc ||
-      !doc.body
-    ) {
-
-      return;
-    }
-
-
-    /*
-     * Dá tempo para o próprio simulado
-     * ler seu _state.
-     */
-
-    await new Promise(
-      resolve =>
-        setTimeout(
-          resolve,
-          250
-        )
-    );
-
-
-    restoreFields(
-      doc,
-      record
-    );
-
-
-    /*
-     * Se necessário,
-     * navega até a questão salva.
-     */
-
-    await navigateToSavedQuestion(
-      doc,
-      record
-    );
-
-
-    /*
-     * Restaura novamente depois
-     * da navegação.
-     */
-
-    restoreFields(
-      doc,
-      record
-    );
-
-
-    try {
-
-      frame.contentWindow
-        .scrollTo({
-
-          top:
-            Number(
-              record.scrollY ||
-              0
-            ),
-
-          behavior:
-            'auto'
-
-        });
-
-    } catch (_) {}
-
-
-    setTimeout(
-
-      () =>
-        restoreFields(
-          doc,
-          record
-        ),
-
-      500
-
-    );
-  }
-
-
-  /* ============================================================
-     CAPTURA
-     ============================================================ */
-
-  function captureActive(
-    force
-  ) {
-
-    if (
-
       !active ||
       !active.frame ||
       !active.path
-
     ) {
 
       return;
@@ -1751,21 +1261,26 @@
 
 
     const question =
-      questionInfo(doc);
+      questionInfo(
+        doc
+      );
 
 
     const record = {
 
       version:
-        3,
+        4,
 
       /*
-       * CAMINHO REAL:
-       * mantém maiúsculas.
+       * Caminho real.
        */
 
       path:
         active.path,
+
+      /*
+       * Nome amigável.
+       */
 
       name:
         cleanSimulationName(
@@ -1783,6 +1298,7 @@
         question.number,
 
       updatedAt:
+
         new Date()
           .toISOString(),
 
@@ -1801,10 +1317,21 @@
         ),
 
       fields:
-        captureFields(doc),
+        captureFields(
+          doc
+        ),
+
+      /*
+       * Guardamos também o state nativo.
+       *
+       * O retomar-simulado-interno.js
+       * será responsável por utilizá-lo.
+       */
 
       nativeState:
-        captureNativeState(doc)
+        captureNativeState(
+          doc
+        )
 
     };
 
@@ -1850,45 +1377,15 @@
 
 
   /* ============================================================
-     RECARREGAR IFRAME
-     ============================================================ */
-
-  function reloadFrame(frame) {
-
-    try {
-
-      frame.contentWindow
-        .location
-        .reload();
-
-
-    } catch (_) {
-
-      const src =
-        frame.getAttribute(
-          'src'
-        );
-
-
-      if (src) {
-
-        frame.setAttribute(
-          'src',
-          src
-        );
-      }
-    }
-  }
-
-
-  /* ============================================================
-     CONFIGURAR SIMULADO
+     MONITORAR SIMULADO
      ============================================================ */
 
   function setupFrame(frame) {
 
     const path =
-      framePath(frame);
+      framePath(
+        frame
+      );
 
 
     if (
@@ -1923,6 +1420,11 @@
       return;
     }
 
+
+    /*
+     * Cancela apenas o monitoramento
+     * do iframe anterior.
+     */
 
     if (
       active &&
@@ -1972,29 +1474,45 @@
 
 
     /* --------------------------------------------------------
-       INTERAÇÕES
+       RESPOSTAS
        -------------------------------------------------------- */
 
     doc.addEventListener(
+
       'input',
+
       scheduleCapture,
+
       true
+
     );
 
 
     doc.addEventListener(
+
       'change',
+
       scheduleCapture,
+
       true
+
     );
 
 
     doc.addEventListener(
+
       'keydown',
+
       scheduleCapture,
+
       true
+
     );
 
+
+    /* --------------------------------------------------------
+       CLIQUES
+       -------------------------------------------------------- */
 
     doc.addEventListener(
 
@@ -2018,7 +1536,10 @@
         const text =
           normText(
 
-            control &&
+            control
+
+            &&
+
             (
               control.textContent
 
@@ -2037,7 +1558,7 @@
 
 
         /*
-         * Antes de voltar ao Hub,
+         * Ao clicar em Voltar ao Hub,
          * salva imediatamente.
          */
 
@@ -2066,7 +1587,42 @@
 
 
     /* --------------------------------------------------------
-       CONCLUSÃO
+       FECHAR / RECARREGAR
+       -------------------------------------------------------- */
+
+    try {
+
+      frame.contentWindow
+        .addEventListener(
+
+          'beforeunload',
+
+          () => {
+
+            if (
+              active &&
+              active.frame === frame
+            ) {
+
+              active.dirty =
+                true;
+
+
+              captureActive(
+                true
+              );
+            }
+
+          }
+
+        );
+
+
+    } catch (_) {}
+
+
+    /* --------------------------------------------------------
+       DETECTAR CONCLUSÃO
        -------------------------------------------------------- */
 
     active.interval =
@@ -2075,11 +1631,8 @@
         () => {
 
           if (
-
             !active ||
-            active.frame !==
-              frame
-
+            active.frame !== frame
           ) {
 
             return;
@@ -2088,7 +1641,8 @@
 
           /*
            * Se o history mudou,
-           * a tentativa terminou.
+           * entendemos que a tentativa
+           * terminou.
            */
 
           if (
@@ -2135,110 +1689,29 @@
       );
 
 
-    /* --------------------------------------------------------
-       AÇÃO PENDENTE
-       -------------------------------------------------------- */
-
-    const pending =
-
-      pendingAction
-
-      &&
-
-      keyPath(
-        pendingAction.path
-      )
-
-      ===
-
-      keyPath(path)
-
-        ? pendingAction
-
-        : null;
-
-
-    if (pending) {
-
-      pendingAction =
-        null;
-
-
-      /*
-       * CONTINUAR
-       */
-
-      if (
-        pending.mode ===
-          'continue'
-      ) {
-
-        setTimeout(
-
-          () =>
-            restoreUniversal(
-
-              frame,
-
-              pending.record
-
-            ),
-
-          100
-
-        );
-      }
-
-
-      /*
-       * FRESH:
-       * simplesmente deixa o simulado
-       * abrir do zero.
-       */
-
-
-      updateButton();
-
-      return;
-    }
-
-
-    /* --------------------------------------------------------
-       ABERTURA NORMAL
-       -------------------------------------------------------- */
-
-    const existing =
-      getRecord(path);
-
-
-    if (existing) {
-
-      setTimeout(
-
-        () =>
-          showOpenChoice(
-
-            existing,
-
-            frame
-
-          ),
-
-        180
-
-      );
-    }
-
+    /*
+     * IMPORTANTE:
+     *
+     * Não mostramos mais nenhum modal
+     * Continuar/Recomeçar aqui.
+     *
+     * retomar-simulado-interno.js
+     * será responsável por isso.
+     */
 
     updateButton();
   }
 
 
+  /* ============================================================
+     REGISTRAR IFRAMES
+     ============================================================ */
+
   function registerFrame(frame) {
 
     if (
       frame.dataset
-        .medsimResumeV3 ===
+        .medsimResumeHubV4 ===
       '1'
     ) {
 
@@ -2247,7 +1720,7 @@
 
 
     frame.dataset
-      .medsimResumeV3 =
+      .medsimResumeHubV4 =
       '1';
 
 
@@ -2255,10 +1728,20 @@
 
       'load',
 
-      () =>
-        setupFrame(
-          frame
-        )
+      () => {
+
+        setTimeout(
+          () => {
+
+            setupFrame(
+              frame
+            );
+
+          },
+          100
+        );
+
+      }
 
     );
 
@@ -2266,21 +1749,24 @@
     try {
 
       if (
-
-        frame.contentDocument
-
-        &&
-
+        frame.contentDocument &&
         frame.contentDocument
           .readyState ===
           'complete'
-
       ) {
 
-        setupFrame(
-          frame
+        setTimeout(
+          () => {
+
+            setupFrame(
+              frame
+            );
+
+          },
+          100
         );
       }
+
 
     } catch (_) {}
   }
@@ -2292,6 +1778,7 @@
       .querySelectorAll(
         'iframe'
       )
+
       .forEach(
         registerFrame
       );
@@ -2335,29 +1822,21 @@
 
 
         if (
-
-          value
-
-          &&
-
+          value &&
           /\.html?(?:[?#]|$)/i
             .test(value)
-
         ) {
 
           output.push(
-            realPath(value)
+            realPath(
+              value
+            )
           );
         }
 
       }
     );
 
-
-    /*
-     * Também procura caminho dentro
-     * de onclick="carregarSimulado('...')"
-     */
 
     const onclick =
 
@@ -2371,36 +1850,33 @@
         )
       )
 
-      || '';
+      ||
+
+      '';
 
 
-    const matches =
-
-      onclick.match(
-
-        /["']([^"']+\.html?(?:[?#][^"']*)?)["']/ig
-
-      )
-
-      || [];
+    const regex =
+      /["']([^"']+\.html?(?:[?#][^"']*)?)["']/ig;
 
 
-    matches.forEach(
-      value =>
+    let match;
 
-        output.push(
 
-          realPath(
-
-            value.slice(
-              1,
-              -1
-            )
-
+    while (
+      (
+        match =
+          regex.exec(
+            onclick
           )
+      )
+    ) {
 
+      output.push(
+        realPath(
+          match[1]
         )
-    );
+      );
+    }
 
 
     return output;
@@ -2417,11 +1893,11 @@
       );
 
 
-    const base =
+    const targetBase =
       basename(
         record.path
       )
-      .toLowerCase();
+        .toLowerCase();
 
 
     const elements = [
@@ -2451,66 +1927,54 @@
             element
           )
 
-          .some(
-            path =>
+            .some(
+              path =>
 
-              keyPath(path) ===
-                target
+                keyPath(path) ===
+                  target
 
-              ||
+                ||
 
-              basename(path)
-                .toLowerCase() ===
-                base
-          )
+                basename(path)
+                  .toLowerCase() ===
+                  targetBase
+            )
       )
 
-      || null
+      ||
+
+      null
 
     );
   }
 
 
   /* ============================================================
-     CONTINUAR A PARTIR DO HUB
+     ABRIR SIMULADO
+
+     ALTERAÇÃO PRINCIPAL DA V4:
+
+     O Hub agora SOMENTE abre o arquivo.
+
+     Não restaura respostas.
+     Não restaura state.
+     Não pergunta Continuar/Recomeçar.
+
+     Isso será feito dentro do iframe
+     por retomar-simulado-interno.js.
      ============================================================ */
 
-  function openSimulation(
-    record
-  ) {
-
-    /*
-     * Restaura o _state antes mesmo
-     * de abrir o HTML.
-     */
-
-    applyNativeState(
-      record.nativeState
-    );
-
-
-    pendingAction = {
-
-      path:
-        record.path,
-
-      mode:
-        'continue',
-
-      record
-
-    };
-
+  function openSimulation(record) {
 
     closeModal();
 
 
     /*
-     * Primeiro tenta clicar no próprio
-     * card/link já existente no Hub.
-     *
-     * Isso preserva toda a lógica
+     * Primeiro usa o próprio elemento
      * original do Hub.
+     *
+     * É a opção mais segura porque
+     * preserva toda a lógica original.
      */
 
     const element =
@@ -2528,12 +1992,12 @@
 
 
     /*
-     * Fallback.
+     * Fallback usando a função
+     * existente do Hub.
      */
 
     if (
-      typeof window
-        .carregarSimulado ===
+      typeof window.carregarSimulado ===
         'function'
     ) {
 
@@ -2543,153 +2007,27 @@
           record.path
         );
 
+
         return;
 
-      } catch (_) {}
+
+      } catch (error) {
+
+        console.warn(
+
+          '[MedSim] Falha ao abrir via carregarSimulado().',
+
+          error
+
+        );
+      }
     }
-
-
-    pendingAction =
-      null;
 
 
     alert(
 
-      'Não foi possível localizar automaticamente este simulado no Hub.\n\n'
+      'Não foi possível localizar automaticamente este simulado no Hub.'
 
-      +
-
-      'Abra-o normalmente e escolha “Continuar”.'
-
-    );
-  }
-
-
-  /* ============================================================
-     CONTINUAR SIMULADO JÁ ABERTO
-     ============================================================ */
-
-  function continueCurrent(
-    record,
-    frame
-  ) {
-
-    /*
-     * Primeiro devolve o state nativo.
-     */
-
-    applyNativeState(
-      record.nativeState
-    );
-
-
-    /*
-     * Marca o próximo load para
-     * completar a restauração.
-     */
-
-    pendingAction = {
-
-      path:
-        framePath(frame),
-
-      mode:
-        'continue',
-
-      record
-
-    };
-
-
-    closeModal();
-
-
-    /*
-     * Recarrega para que o próprio
-     * JS do simulado leia o state.
-     */
-
-    reloadFrame(
-      frame
-    );
-  }
-
-
-  /* ============================================================
-     RECOMEÇAR
-     ============================================================ */
-
-  function restartCurrent(
-    record,
-    frame
-  ) {
-
-    let doc;
-
-
-    try {
-
-      doc =
-        frame.contentDocument;
-
-    } catch (_) {
-
-      doc =
-        null;
-    }
-
-
-    /*
-     * Remove apenas o STATE em andamento.
-     *
-     * NÃO remove history.
-     */
-
-    if (doc) {
-
-      clearNativeState(
-        doc,
-        record
-      );
-    }
-
-
-    /*
-     * Remove nossa camada universal.
-     */
-
-    removeRecord(
-      record.path
-    );
-
-
-    /*
-     * Próximo load será "fresh".
-     */
-
-    pendingAction = {
-
-      path:
-        framePath(frame),
-
-      mode:
-        'fresh',
-
-      record:
-        null
-
-    };
-
-
-    closeModal();
-
-
-    /*
-     * Recarrega o simulado.
-     */
-
-    reloadFrame(
-      frame
     );
   }
 
@@ -2721,6 +2059,10 @@
 
 
     style.textContent = `
+
+      /* ======================================================
+         BOTÃO RETOMAR
+         ====================================================== */
 
       #${BUTTON_ID} {
 
@@ -2814,7 +2156,9 @@
 
 
         transition:
-          .16s ease;
+
+          transform .16s ease,
+          box-shadow .16s ease;
       }
 
 
@@ -2928,6 +2272,10 @@
           800;
       }
 
+
+      /* ======================================================
+         MODAL
+         ====================================================== */
 
       #${MODAL_ID} {
 
@@ -3080,6 +2428,7 @@
         font-size:
           1rem;
 
+
         font-weight:
           800;
       }
@@ -3201,6 +2550,7 @@
 
         font-size:
           .88rem;
+
 
         font-weight:
           800;
@@ -3448,18 +2798,24 @@
 
 
     document.head
-      .appendChild(style);
+      .appendChild(
+        style
+      );
   }
 
 
   /* ============================================================
-     INTERFACE
+     INTERFACE DO HUB
      ============================================================ */
 
   function createUI() {
 
     injectStyle();
 
+
+    /* --------------------------------------------------------
+       BOTÃO FLUTUANTE
+       -------------------------------------------------------- */
 
     if (
       !document.getElementById(
@@ -3491,9 +2847,11 @@
 
         </span>
 
+
         <span>
           Retomar simulado
         </span>
+
 
         <span
           class="medsim-resume-safe-count">
@@ -3506,10 +2864,18 @@
 
 
       button.addEventListener(
+
         'click',
+
         openList
+
       );
 
+
+      /*
+       * Continua independente
+       * da sidebar/menu do Hub.
+       */
 
       document.body
         .appendChild(
@@ -3517,6 +2883,10 @@
         );
     }
 
+
+    /* --------------------------------------------------------
+       MODAL
+       -------------------------------------------------------- */
 
     if (
       !document.getElementById(
@@ -3549,13 +2919,16 @@
 
             <div>
 
-              <div class="medsim-resume-safe-title">
+              <div
+                class="medsim-resume-safe-title">
 
                 Retomar simulado
 
               </div>
 
-              <div class="medsim-resume-safe-subtitle">
+
+              <div
+                class="medsim-resume-safe-subtitle">
 
                 Continue um simulado em andamento neste navegador
 
@@ -3576,15 +2949,18 @@
           </div>
 
 
-          <div class="medsim-resume-safe-list">
+          <div
+            class="medsim-resume-safe-list">
 
           </div>
 
 
-          <div class="medsim-resume-safe-note">
+          <div
+            class="medsim-resume-safe-note">
 
-            O salvamento universal complementa o sistema interno
-            dos simulados. Resultados já concluídos não são apagados.
+            Ao abrir o simulado, você poderá escolher
+            dentro dele entre continuar de onde parou
+            ou recomeçar.
 
           </div>
 
@@ -3604,8 +2980,11 @@
           '.medsim-resume-safe-close'
         )
         .addEventListener(
+
           'click',
+
           closeModal
+
         );
 
 
@@ -3649,9 +3028,13 @@
       allRecords();
 
 
+    /*
+     * Só aparece no Hub.
+     */
+
     button.style.display =
 
-      records.length &&
+      records.length > 0 &&
       !simulationOpen()
 
         ? 'flex'
@@ -3671,6 +3054,19 @@
         String(
           records.length
         );
+    }
+
+
+    /*
+     * Entrou no simulado:
+     * fecha eventual modal do Hub.
+     */
+
+    if (
+      simulationOpen()
+    ) {
+
+      closeModal();
     }
   }
 
@@ -3692,15 +3088,10 @@
 
 
   /* ============================================================
-     CARTÃO
+     CARTÃO NO HUB
      ============================================================ */
 
-  function renderRecordCard(
-    record,
-    onContinue,
-    onRestart,
-    restartLabel
-  ) {
+  function renderRecordCard(record) {
 
     const item =
       document.createElement(
@@ -3711,11 +3102,6 @@
     item.className =
       'medsim-resume-safe-item';
 
-
-    /*
-     * Mesmo registros antigos da V2
-     * passam a usar o nome limpo.
-     */
 
     const name =
 
@@ -3739,49 +3125,57 @@
       );
 
 
-    const questionLabel =
+    let question =
+      'Progresso salvo';
 
-      (
-        record.question &&
-        record.question.label
-      )
 
-      ||
+    if (
+      record.question &&
+      record.question.label
+    ) {
 
-      (
-        typeof record.question ===
-          'string'
+      question =
+        record.question.label;
 
-          ? record.question
 
-          : 'Progresso salvo'
-      );
+    } else if (
+      typeof record.question ===
+        'string'
+    ) {
+
+      question =
+        record.question;
+    }
 
 
     item.innerHTML = `
 
-      <div class="medsim-resume-safe-name">
+      <div
+        class="medsim-resume-safe-name">
 
       </div>
 
 
-      <div class="medsim-resume-safe-subject">
+      <div
+        class="medsim-resume-safe-subject">
 
       </div>
 
 
-      <div class="medsim-resume-safe-meta">
+      <div
+        class="medsim-resume-safe-meta">
 
       </div>
 
 
-      <div class="medsim-resume-safe-actions">
+      <div
+        class="medsim-resume-safe-actions">
 
         <button
           type="button"
           class="medsim-resume-safe-action primary">
 
-          Continuar
+          Abrir simulado
 
         </button>
 
@@ -3789,6 +3183,8 @@
         <button
           type="button"
           class="medsim-resume-safe-action danger">
+
+          Descartar progresso
 
         </button>
 
@@ -3819,7 +3215,7 @@
       )
       .textContent =
 
-        `${questionLabel} · salvo em ${
+        `${question} · salvo em ${
 
           formatDate(
             record.updatedAt
@@ -3834,27 +3230,64 @@
       );
 
 
+    /*
+     * ABRIR.
+     *
+     * Aqui não restauramos nada.
+     */
+
     buttons[0]
       .addEventListener(
+
         'click',
-        onContinue
+
+        () => {
+
+          openSimulation(
+            record
+          );
+        }
+
       );
 
 
-    buttons[1]
-      .textContent =
-
-        restartLabel
-
-        ||
-
-        'Descartar progresso';
-
+    /*
+     * DESCARTAR PROGRESSO UNIVERSAL.
+     */
 
     buttons[1]
       .addEventListener(
+
         'click',
-        onRestart
+
+        () => {
+
+          const ok =
+            confirm(
+
+              'Descartar o progresso salvo deste simulado?\n\n'
+
+              +
+
+              'Resultados já concluídos não serão apagados.'
+
+            );
+
+
+          if (!ok) {
+            return;
+          }
+
+
+          removeRecord(
+            record.path
+          );
+
+
+          openList();
+
+        }
+
       );
 
 
@@ -3863,7 +3296,7 @@
 
 
   /* ============================================================
-     LISTA NO HUB
+     ABRIR LISTA
      ============================================================ */
 
   function openList() {
@@ -3874,181 +3307,37 @@
       );
 
 
+    if (!modal) {
+      return;
+    }
+
+
     const list =
-
-      modal
-
-      &&
-
       modal.querySelector(
         '.medsim-resume-safe-list'
       );
-
-
-    if (
-      !modal ||
-      !list
-    ) {
-
-      return;
-    }
 
 
     list.innerHTML =
       '';
 
 
-    allRecords()
-      .forEach(
-        record => {
-
-          list.appendChild(
-
-            renderRecordCard(
-
-              record,
+    const records =
+      allRecords();
 
 
-              () =>
-                openSimulation(
-                  record
-                ),
+    records.forEach(
+      record => {
 
+        list.appendChild(
 
-              () => {
+          renderRecordCard(
+            record
+          )
 
-                const ok =
-                  confirm(
+        );
 
-                    'Descartar o progresso salvo deste simulado?\n\n'
-
-                    +
-
-                    'Resultados já concluídos não serão apagados.'
-
-                  );
-
-
-                if (!ok) {
-                  return;
-                }
-
-
-                removeRecord(
-                  record.path
-                );
-
-
-                openList();
-              },
-
-
-              'Descartar progresso'
-
-            )
-
-          );
-
-        }
-      );
-
-
-    modal.dataset.open =
-      'true';
-  }
-
-
-  /* ============================================================
-     MODAL AO ABRIR O SIMULADO
-     ============================================================ */
-
-  function showOpenChoice(
-    record,
-    frame
-  ) {
-
-    const modal =
-      document.getElementById(
-        MODAL_ID
-      );
-
-
-    const list =
-
-      modal
-
-      &&
-
-      modal.querySelector(
-        '.medsim-resume-safe-list'
-      );
-
-
-    if (
-      !modal ||
-      !list
-    ) {
-
-      return;
-    }
-
-
-    list.innerHTML =
-      '';
-
-
-    list.appendChild(
-
-      renderRecordCard(
-
-        record,
-
-
-        /*
-         * CONTINUAR
-         */
-
-        () =>
-          continueCurrent(
-            record,
-            frame
-          ),
-
-
-        /*
-         * RECOMEÇAR
-         */
-
-        () => {
-
-          const ok =
-            confirm(
-
-              'Recomeçar este simulado do início?\n\n'
-
-              +
-
-              'O progresso em andamento será descartado, mas resultados já concluídos serão mantidos.'
-
-            );
-
-
-          if (!ok) {
-            return;
-          }
-
-
-          restartCurrent(
-            record,
-            frame
-          );
-        },
-
-
-        'Recomeçar'
-
-      )
-
+      }
     );
 
 
@@ -4058,7 +3347,7 @@
 
 
   /* ============================================================
-     INÍCIO
+     INICIAR
      ============================================================ */
 
   function start() {
@@ -4069,8 +3358,11 @@
 
 
     /*
-     * Continua sem MutationObserver
-     * sobre o Hub.
+     * Não usamos MutationObserver
+     * no Hub inteiro.
+     *
+     * Verificamos apenas se surgiram
+     * novos iframes.
      */
 
     setInterval(
@@ -4096,7 +3388,7 @@
 
         if (
           event.key ===
-          'Escape'
+            'Escape'
         ) {
 
           closeModal();
@@ -4106,6 +3398,11 @@
 
     );
 
+
+    /*
+     * Última tentativa de salvar
+     * antes de fechar o Hub.
+     */
 
     window.addEventListener(
 
@@ -4131,7 +3428,7 @@
 
     console.info(
 
-      '[MedSim] Retomar simulado v3 ativo.'
+      '[MedSim] Retomar simulado — Hub v4 ativo.'
 
     );
   }
@@ -4139,7 +3436,7 @@
 
   if (
     document.readyState ===
-    'loading'
+      'loading'
   ) {
 
     document.addEventListener(
