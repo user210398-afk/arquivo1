@@ -2,18 +2,20 @@
   'use strict';
 
   /* ============================================================
-     MEDSIM — RETOMAR SIMULADO INTERNO v2
+     MEDSIM — RETOMAR SIMULADO INTERNO v3
 
-     Responsável por:
+     REGRA:
 
-     - mostrar Continuar / Recomeçar dentro do simulado;
-     - registrar a navegação REAL utilizada pelo usuário;
-     - reproduzir essa navegação ao continuar;
-     - restaurar respostas;
-     - preservar históricos já concluídos.
+     - Só mostra Continuar/Recomeçar quando o simulado
+       JÁ POSSUI progresso de uma sessão anterior.
 
-     O botão do Hub continua sendo responsabilidade de:
-     retomar-simulado.js
+     - Depois que a resolução começa:
+         • novo simulado
+         • continuar
+         • recomeçar
+
+       o painel fica bloqueado até o usuário voltar ao Hub.
+
      ============================================================ */
 
 
@@ -26,15 +28,27 @@
 
 
   const ACTION_KEY =
-    'medsim_resume_inside_action_v2';
+    'medsim_resume_inside_action_v3';
+
+
+  /*
+   * Guarda quais simulados estão sendo
+   * resolvidos NESTA sessão da página.
+   *
+   * sessionStorage é proposital:
+   * fecha a aba → desaparece.
+   */
+
+  const RUNNING_KEY =
+    'medsim_resume_running_v1';
 
 
   const STYLE_ID =
-    'medsim-resume-inside-style-v2';
+    'medsim-resume-inside-style-v3';
 
 
   const PANEL_ID =
-    'medsim-resume-inside-panel-v2';
+    'medsim-resume-inside-panel-v3';
 
 
   const registered =
@@ -209,7 +223,7 @@
 
 
   /* ============================================================
-     LOCALSTORAGE
+     OBJETOS LOCALSTORAGE
      ============================================================ */
 
   function loadObject(key) {
@@ -231,8 +245,7 @@
       return (
 
         value &&
-        typeof value ===
-          'object' &&
+        typeof value === 'object' &&
         !Array.isArray(value)
 
           ? value
@@ -313,10 +326,118 @@
 
 
   /* ============================================================
-     TRILHA DE NAVEGAÇÃO
+     SIMULADO EM RESOLUÇÃO
 
-     Guarda os botões reais usados para
-     chegar até a questão atual.
+     Essa é a principal mudança da V3.
+     ============================================================ */
+
+  function loadRunning() {
+
+    try {
+
+      const value =
+        JSON.parse(
+
+          sessionStorage.getItem(
+            RUNNING_KEY
+          )
+
+          || '{}'
+
+        );
+
+
+      return (
+
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value)
+
+          ? value
+
+          : {}
+
+      );
+
+
+    } catch (_) {
+
+      return {};
+    }
+  }
+
+
+
+  function saveRunning(value) {
+
+    try {
+
+      sessionStorage.setItem(
+
+        RUNNING_KEY,
+
+        JSON.stringify(
+          value
+        )
+
+      );
+
+    } catch (_) {}
+  }
+
+
+
+  function setRunning(path) {
+
+    const running =
+      loadRunning();
+
+
+    running[
+      keyPath(path)
+    ] = true;
+
+
+    saveRunning(
+      running
+    );
+  }
+
+
+
+  function clearRunning(path) {
+
+    const running =
+      loadRunning();
+
+
+    delete running[
+      keyPath(path)
+    ];
+
+
+    saveRunning(
+      running
+    );
+  }
+
+
+
+  function isRunning(path) {
+
+    return Boolean(
+
+      loadRunning()[
+        keyPath(path)
+      ]
+
+    );
+  }
+
+
+
+  /* ============================================================
+     TRILHA DE NAVEGAÇÃO
      ============================================================ */
 
   function getTrail(path) {
@@ -354,10 +475,6 @@
         TRAIL_KEY
       );
 
-
-    /*
-     * Limite de segurança.
-     */
 
     all[
       keyPath(path)
@@ -537,7 +654,7 @@
 
 
   /* ============================================================
-     ELEMENTO VISÍVEL
+     VISIBILIDADE
      ============================================================ */
 
   function visible(element) {
@@ -566,13 +683,11 @@
 
       return (
 
-        style.display !==
-          'none'
+        style.display !== 'none'
 
         &&
 
-        style.visibility !==
-          'hidden'
+        style.visibility !== 'hidden'
 
         &&
 
@@ -677,14 +792,13 @@
 
 
     const body =
+
       (
         doc.body &&
         doc.body.innerText
       )
 
-      ||
-
-      '';
+      || '';
 
 
     const match =
@@ -708,9 +822,6 @@
 
   /* ============================================================
      ASSINATURA DA QUESTÃO
-
-     Usada para perceber que o clique
-     realmente mudou de questão.
      ============================================================ */
 
   function questionSignature(doc) {
@@ -776,8 +887,7 @@
 
       .filter(
         text =>
-          text.length >=
-          20
+          text.length >= 20
       )
 
       .sort(
@@ -886,12 +996,14 @@
 
 
     Object.keys(
+
       (
         record &&
         record.nativeState
       )
 
       || {}
+
     )
 
     .forEach(
@@ -1137,18 +1249,15 @@
 
           if (
 
-            saved.checked !==
-              null
+            saved.checked !== null
 
             &&
 
-            saved.checked !==
-              undefined
+            saved.checked !== undefined
 
             &&
 
-            'checked' in
-              element
+            'checked' in element
 
           ) {
 
@@ -1162,18 +1271,15 @@
 
           if (
 
-            saved.value !==
-              undefined
+            saved.value !== undefined
 
             &&
 
-            saved.type !==
-              'radio'
+            saved.type !== 'radio'
 
             &&
 
-            saved.type !==
-              'checkbox'
+            saved.type !== 'checkbox'
 
           ) {
 
@@ -1224,10 +1330,7 @@
 
 
   /* ============================================================
-     DESCREVER UM BOTÃO REAL
-
-     Em vez de guardar apenas "Próxima",
-     guardamos id, texto, atributos etc.
+     DESCRITOR DO BOTÃO
      ============================================================ */
 
   function descriptorFor(
@@ -1461,7 +1564,7 @@
 
 
   /* ============================================================
-     LOCALIZAR NOVAMENTE O MESMO BOTÃO
+     LOCALIZAR BOTÃO
      ============================================================ */
 
   function matchesDescriptor(
@@ -1771,7 +1874,7 @@
 
 
   /* ============================================================
-     BOTÕES QUE NÃO DEVEM SER GRAVADOS NA TRILHA
+     CONTROLES IGNORADOS
      ============================================================ */
 
   function shouldIgnoreControl(
@@ -1849,7 +1952,10 @@
 
 
   /* ============================================================
-     GRAVAR A NAVEGAÇÃO REAL
+     MONITORAR NAVEGAÇÃO
+
+     Também detecta "Voltar ao Hub"
+     para liberar a próxima retomada.
      ============================================================ */
 
   function monitorNavigation(
@@ -1880,15 +1986,10 @@
     }
 
 
-    /*
-     * Não instala duas vezes
-     * no mesmo documento.
-     */
-
     if (
       doc.documentElement
         .dataset
-        .medsimTrailV2 ===
+        .medsimTrailV3 ===
       '1'
     ) {
 
@@ -1898,7 +1999,7 @@
 
     doc.documentElement
       .dataset
-      .medsimTrailV2 =
+      .medsimTrailV3 =
       '1';
 
 
@@ -1927,8 +2028,63 @@
             : null;
 
 
+        if (!control) {
+
+          return;
+        }
+
+
+        const controlText =
+          norm(
+
+            control.textContent
+
+            ||
+
+            control.value
+
+            ||
+
+            control.getAttribute(
+              'aria-label'
+            )
+
+            ||
+
+            ''
+
+          );
+
+
+        /*
+         * SAIU PARA O HUB.
+         *
+         * Libera o painel para a
+         * próxima abertura.
+         */
+
         if (
-          !control ||
+          /voltar ao hub/
+            .test(
+              controlText
+            )
+        ) {
+
+          clearRunning(
+            path
+          );
+
+
+          removePanel(
+            doc
+          );
+
+
+          return;
+        }
+
+
+        if (
           shouldIgnoreControl(
             control
           )
@@ -1959,11 +2115,6 @@
 
 
 
-        /*
-         * Espera o JS do simulado
-         * terminar a troca de questão.
-         */
-
         setTimeout(
           () => {
 
@@ -1972,11 +2123,6 @@
                 doc
               );
 
-
-            /*
-             * Só grava se a página realmente
-             * mudou de questão.
-             */
 
             if (
               !after ||
@@ -2019,7 +2165,7 @@
 
 
   /* ============================================================
-     REPRODUZIR A NAVEGAÇÃO REAL
+     REPRODUZIR TRILHA
      ============================================================ */
 
   async function replayTrail(
@@ -2079,11 +2225,6 @@
       );
 
 
-    /*
-     * O estado nativo já colocou
-     * exatamente na questão correta.
-     */
-
     if (
       target &&
       current === target
@@ -2127,10 +2268,6 @@
       control.click();
 
 
-
-      /*
-       * Esperamos a questão realmente mudar.
-       */
 
       let changed =
         false;
@@ -2190,9 +2327,7 @@
       }
 
 
-      if (
-        !changed
-      ) {
+      if (!changed) {
 
         continue;
       }
@@ -2215,10 +2350,7 @@
 
 
   /* ============================================================
-     FALLBACK PARA PROGRESSOS ANTIGOS
-
-     Progressos criados antes da V2
-     ainda não possuem trilha.
+     FALLBACK
      ============================================================ */
 
   async function fallbackAdvance(
@@ -2431,11 +2563,6 @@
 
 
 
-    /*
-     * 1. Talvez o próprio state nativo
-     * já tenha resolvido.
-     */
-
     if (
 
       target
@@ -2454,11 +2581,6 @@
 
 
 
-    /*
-     * 2. Nova estratégia:
-     * reproduzir a navegação REAL.
-     */
-
     if (
       !success
     ) {
@@ -2475,11 +2597,6 @@
 
 
 
-    /*
-     * 3. Fallback para registros
-     * antigos sem trilha.
-     */
-
     if (
       !success
     ) {
@@ -2494,10 +2611,6 @@
     }
 
 
-
-    /*
-     * Respostas.
-     */
 
     restoreFields(
       doc,
@@ -2520,10 +2633,6 @@
     );
 
 
-
-    /*
-     * Rolagem.
-     */
 
     try {
 
@@ -2919,36 +3028,6 @@
       }
 
 
-      #${PANEL_ID}[
-        data-mode="done"
-      ] {
-
-        border-color:
-
-          rgba(
-            22,
-            163,
-            74,
-            .22
-          );
-      }
-
-
-      #${PANEL_ID}[
-        data-mode="error"
-      ] {
-
-        border-color:
-
-          rgba(
-            220,
-            38,
-            38,
-            .26
-          );
-      }
-
-
       @media (
         max-width:
         560px
@@ -3006,100 +3085,8 @@
 
 
 
-  function showStatus(
-    doc,
-    title,
-    meta,
-    mode,
-    timeout
-  ) {
-
-    removePanel(
-      doc
-    );
-
-
-    injectStyle(
-      doc
-    );
-
-
-    const panel =
-      doc.createElement(
-        'div'
-      );
-
-
-    panel.id =
-      PANEL_ID;
-
-
-    panel.dataset.mode =
-      mode || 'done';
-
-
-    panel.innerHTML = `
-
-      <div class="msri-title">
-
-      </div>
-
-      <div class="msri-meta">
-
-      </div>
-
-    `;
-
-
-    panel
-      .querySelector(
-        '.msri-title'
-      )
-      .textContent =
-        title;
-
-
-    panel
-      .querySelector(
-        '.msri-meta'
-      )
-      .textContent =
-        meta;
-
-
-    doc.body
-      .appendChild(
-        panel
-      );
-
-
-    if (
-      timeout !== 0
-    ) {
-
-      setTimeout(
-        () => {
-
-          if (
-            panel.isConnected
-          ) {
-
-            panel.remove();
-          }
-
-        },
-
-        timeout ||
-        3800
-
-      );
-    }
-  }
-
-
-
   /* ============================================================
-     CONTINUAR / RECOMEÇAR
+     PAINEL CONTINUAR / RECOMEÇAR
      ============================================================ */
 
   function showChoice(
@@ -3126,6 +3113,27 @@
       !doc ||
       !doc.body
     ) {
+
+      return;
+    }
+
+
+
+    /*
+     * Segurança:
+     * se já começou a resolução,
+     * o painel NÃO pode aparecer.
+     */
+
+    if (
+      isRunning(
+        path
+      )
+    ) {
+
+      removePanel(
+        doc
+      );
 
       return;
     }
@@ -3210,23 +3218,13 @@
             record.updatedAt
           )
 
-        }`
-
-        +
-
-        (
-          trail.length
-
-            ? ` · ${trail.length} passo(s) de navegação registrados`
-
-            : ''
-        );
+        }`;
 
 
 
-    /* --------------------------------------------------------
+    /* ========================================================
        CONTINUAR
-       -------------------------------------------------------- */
+       ======================================================== */
 
     panel
       .querySelector(
@@ -3239,10 +3237,24 @@
         () => {
 
           /*
-           * Se já temos a navegação real,
-           * começamos da primeira questão
-           * para conseguir reproduzi-la.
+           * A partir daqui o usuário
+           * ESTÁ resolvendo o simulado.
            */
+
+          setRunning(
+            path
+          );
+
+
+          /*
+           * Painel desaparece
+           * imediatamente.
+           */
+
+          removePanel(
+            doc
+          );
+
 
           if (
             trail.length
@@ -3255,11 +3267,6 @@
 
 
           } else {
-
-            /*
-             * Para registros antigos,
-             * ainda tentamos o state nativo.
-             */
 
             applyNativeState(
               record
@@ -3290,9 +3297,9 @@
 
 
 
-    /* --------------------------------------------------------
+    /* ========================================================
        RECOMEÇAR
-       -------------------------------------------------------- */
+       ======================================================== */
 
     panel
       .querySelector(
@@ -3325,8 +3332,23 @@
 
 
           /*
-           * Remove o estado em andamento.
+           * Começou uma nova resolução.
            */
+
+          setRunning(
+            path
+          );
+
+
+          /*
+           * Painel desaparece
+           * imediatamente.
+           */
+
+          removePanel(
+            doc
+          );
+
 
           clearNativeState(
             doc,
@@ -3334,18 +3356,10 @@
           );
 
 
-          /*
-           * Remove a trilha.
-           */
-
           clearTrail(
             path
           );
 
-
-          /*
-           * Remove o registro de retomada.
-           */
 
           removeRecord(
             path
@@ -3361,10 +3375,6 @@
 
           });
 
-
-          /*
-           * Reabre do zero.
-           */
 
           reloadFrame(
             frame
@@ -3448,11 +3458,6 @@
 
 
 
-    /*
-     * A partir daqui começamos a
-     * registrar a navegação REAL.
-     */
-
     monitorNavigation(
       frame,
       path
@@ -3473,14 +3478,115 @@
 
 
 
-    /* --------------------------------------------------------
+    /* ========================================================
        RECOMEÇAR
-       -------------------------------------------------------- */
+
+       Já está em resolução.
+       Nenhum painel.
+       ======================================================== */
 
     if (
       action &&
-      action.mode ===
-        'restart'
+      action.mode === 'restart'
+    ) {
+
+      setRunning(
+        path
+      );
+
+
+      removePanel(
+        doc
+      );
+
+
+      return;
+    }
+
+
+
+    /* ========================================================
+       CONTINUAR
+
+       Restaura e depois deixa o usuário
+       resolver normalmente.
+
+       Nenhum painel durante a prova.
+       ======================================================== */
+
+    if (
+
+      action
+
+      &&
+
+      action.mode === 'continue'
+
+      &&
+
+      record
+
+    ) {
+
+      setRunning(
+        path
+      );
+
+
+      removePanel(
+        doc
+      );
+
+
+      if (
+        !action.useTrail
+      ) {
+
+        applyNativeState(
+          record
+        );
+      }
+
+
+      await restoreAfterReload(
+
+        frame,
+        path,
+        record
+
+      );
+
+
+      /*
+       * NÃO mostra mais:
+       *
+       * "Progresso restaurado"
+       *
+       * nem qualquer outra aba.
+       */
+
+      removePanel(
+        doc
+      );
+
+
+      return;
+    }
+
+
+
+    /* ========================================================
+       JÁ ESTÁ RESOLVENDO
+
+       Mesmo que o Hub salve progresso
+       durante a resolução, o painel
+       permanece escondido.
+       ======================================================== */
+
+    if (
+      isRunning(
+        path
+      )
     ) {
 
       removePanel(
@@ -3493,102 +3599,14 @@
 
 
 
-    /* --------------------------------------------------------
-       CONTINUAR
-       -------------------------------------------------------- */
+    /* ========================================================
+       SIMULADO JÁ INICIADO ANTERIORMENTE
 
-    if (
+       Tem registro e NÃO está atualmente
+       em resolução.
 
-      action
-
-      &&
-
-      action.mode ===
-        'continue'
-
-      &&
-
-      record
-
-    ) {
-
-      /*
-       * Registro antigo sem trilha:
-       * tenta state nativo.
-       */
-
-      if (
-        !action.useTrail
-      ) {
-
-        applyNativeState(
-          record
-        );
-      }
-
-
-
-      const success =
-        await restoreAfterReload(
-
-          frame,
-          path,
-          record
-
-        );
-
-
-
-      if (
-        success
-      ) {
-
-        showStatus(
-
-          doc,
-
-          'Progresso restaurado',
-
-          `${questionLabel(record)} · continue normalmente.`,
-
-          'done',
-
-          3800
-
-        );
-
-
-      } else {
-
-        /*
-         * Não mentimos dizendo que voltou
-         * se não conseguimos confirmar.
-         */
-
-        showStatus(
-
-          doc,
-
-          'Não consegui voltar automaticamente à questão salva',
-
-          'As respostas salvas foram restauradas quando possível. A partir desta versão, a navegação real também passa a ser registrada para tornar as próximas retomadas mais precisas.',
-
-          'error',
-
-          7000
-
-        );
-      }
-
-
-      return;
-    }
-
-
-
-    /* --------------------------------------------------------
-       EXISTE PROGRESSO SALVO
-       -------------------------------------------------------- */
+       Só neste caso mostramos o painel.
+       ======================================================== */
 
     if (
       record
@@ -3603,12 +3621,28 @@
       );
 
 
-    } else {
-
-      removePanel(
-        doc
-      );
+      return;
     }
+
+
+
+    /* ========================================================
+       SIMULADO NOVO / DO ZERO
+
+       Não existe progresso anterior.
+
+       Consideramos que uma nova resolução
+       começou e bloqueamos o painel.
+       ======================================================== */
+
+    setRunning(
+      path
+    );
+
+
+    removePanel(
+      doc
+    );
   }
 
 
@@ -3659,10 +3693,14 @@
     try {
 
       if (
-        frame.contentDocument &&
+
         frame.contentDocument
-          .readyState ===
-          'complete'
+
+        &&
+
+        frame.contentDocument
+          .readyState === 'complete'
+
       ) {
 
         setTimeout(
@@ -3706,11 +3744,6 @@
     scanFrames();
 
 
-    /*
-     * Apenas detecta novos iframes.
-     * Não mexe na estrutura do Hub.
-     */
-
     setInterval(
 
       scanFrames,
@@ -3722,7 +3755,7 @@
 
     console.info(
 
-      '[MedSim] Retomar simulado interno v2 ativo.'
+      '[MedSim] Retomar simulado interno v3 ativo.'
 
     );
   }
@@ -3731,7 +3764,7 @@
 
   if (
     document.readyState ===
-    'loading'
+      'loading'
   ) {
 
     document.addEventListener(
