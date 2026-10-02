@@ -1,136 +1,132 @@
 (function () {
   'use strict';
 
+  const FAV_KEY = 'medsim_favoritos_v1';
+  const FILTER_KEY = 'medsim_filtros_v2';
+  const DONE_KEY = 'simulados_concluidos';
 
-  /* ============================================================
-     MEDSIM — FILTROS DO HUB
-     ============================================================ */
+  const PANEL_ID = 'medsim-filtros-v2';
+  const TRIGGER_ID = 'medsim-filtros-v2-btn';
 
-  const FAVORITES_KEY =
-    'medsim_favoritos_v1';
-
-  const FILTERS_KEY =
-    'medsim_filtros_v1';
-
-  const COMPLETED_KEY =
-    'simulados_concluidos';
-
-  const STYLE_ID =
-    'medsim-filtros-style-v1';
-
-  const PANEL_ID =
-    'medsim-filtros-panel';
-
-  const HIDDEN_CLASS =
-    'medsim-filtro-oculto';
-
-
-  let manifest =
-    [];
-
-  let manifestMap =
-    new Map();
-
-  let favoritos =
-    carregarFavoritos();
-
-  let estado =
-    carregarEstado();
-
-  let buscaInput =
-    null;
-
-  let aplicando =
-    false;
-
+  const HIDE = 'medsim-filtro-v2-hide';
+  const STYLE_ID = 'medsim-filtros-v2-style';
 
 
   /* ============================================================
-     REGRAS DE DISCIPLINA
-
-     A disciplina é detectada pelo nome do arquivo.
+     DISCIPLINAS
      ============================================================ */
 
-  const DISCIPLINAS = [
+  const SUBJECTS = [
 
-    {
-      rx: /farmaco|farmacologia/i,
-      nome: 'Farmacologia'
-    },
+    [
+      /farmaco|farmacologia/i,
+      'Farmacologia'
+    ],
 
-    {
-      rx: /fisiologia|endocrino|hip[oó]fise|pancre[aá]tic/i,
-      nome: 'Fisiologia'
-    },
+    [
+      /fisiologia|endocrino|hip[oó]fise|pancre[aá]tic/i,
+      'Fisiologia'
+    ],
 
-    {
-      rx: /imuno/i,
-      nome: 'Imunologia'
-    },
+    [
+      /imuno/i,
+      'Imunologia'
+    ],
 
-    {
-      rx: /micro/i,
-      nome: 'Microbiologia'
-    },
+    [
+      /micro/i,
+      'Microbiologia'
+    ],
 
-    {
-      rx: /parasito/i,
-      nome: 'Parasitologia'
-    },
+    [
+      /parasito/i,
+      'Parasitologia'
+    ],
 
-    {
-      rx: /patologia/i,
-      nome: 'Patologia'
-    },
+    [
+      /patologia/i,
+      'Patologia'
+    ],
 
-    {
-      rx: /propedeu|proped[eê]utica/i,
-      nome: 'Propedêutica'
-    },
+    [
+      /propedeu|proped[eê]utica/i,
+      'Propedêutica'
+    ],
 
-    {
-      rx: /psico/i,
-      nome: 'Psicomed'
-    },
+    [
+      /psico/i,
+      'Psicomed'
+    ],
 
-    {
-      rx: /vigil/i,
-      nome: 'Vigilância em Saúde'
-    }
+    [
+      /vigil/i,
+      'Vigilância em Saúde'
+    ]
 
   ];
+
+
+  let manifest = [];
+
+  let map =
+    new Map();
+
+  let favorites =
+    loadFavorites();
+
+  let applied =
+    loadFilters();
+
+  let draft = {
+    ...applied
+  };
+
+  let searchInput =
+    null;
+
+  let open =
+    false;
+
+  let refreshTimer =
+    0;
 
 
 
   /* ============================================================
      CSS
-
-     Usa variáveis do próprio Hub quando disponíveis.
      ============================================================ */
 
   const CSS = `
 
-    #${PANEL_ID} {
+    /* ========================================================
+       BOTÃO FILTROS AO LADO DA PESQUISA
+       ======================================================== */
+
+    #${TRIGGER_ID} {
 
       display:
-        flex;
-
-      flex-wrap:
-        wrap;
+        inline-flex;
 
       align-items:
-        flex-end;
+        center;
+
+      justify-content:
+        center;
 
       gap:
-        10px;
+        6px;
 
 
-      margin:
-        10px 0 16px;
+      min-height:
+        36px;
+
+
+      margin-left:
+        8px;
 
 
       padding:
-        12px;
+        8px 11px;
 
 
       border:
@@ -138,69 +134,343 @@
         1px solid
         var(
           --border-color,
-          rgba(148, 163, 184, 0.22)
+          rgba(148,163,184,.30)
         );
 
 
       border-radius:
-        14px;
+        10px;
 
 
       background:
 
         var(
           --card-bg,
-          rgba(255, 255, 255, 0.72)
+          #ffffff
+        );
+
+
+      color:
+
+        var(
+          --text-primary,
+          #0f172a
+        );
+
+
+      font:
+        inherit;
+
+
+      font-size:
+        .82rem;
+
+
+      font-weight:
+        700;
+
+
+      cursor:
+        pointer;
+
+
+      white-space:
+        nowrap;
+
+
+      box-shadow:
+
+        0 2px 8px
+        rgba(
+          15,
+          23,
+          42,
+          .06
+        );
+    }
+
+
+
+    /* Filtros ativos */
+
+    #${TRIGGER_ID}[
+      data-active="true"
+    ] {
+
+      border-color:
+
+        var(
+          --purple-primary,
+          #6366f1
+        );
+
+
+      color:
+
+        var(
+          --purple-primary,
+          #6366f1
+        );
+
+
+      background:
+
+        rgba(
+          99,
+          102,
+          241,
+          .08
+        );
+    }
+
+
+
+    /* ========================================================
+       PAINEL FLUTUANTE
+
+       Não ocupa espaço quando fechado.
+       ======================================================== */
+
+    #${PANEL_ID} {
+
+      position:
+        fixed;
+
+
+      z-index:
+        2147482000;
+
+
+      display:
+        none;
+
+
+      width:
+
+        min(
+          430px,
+          calc(100vw - 24px)
+        );
+
+
+      max-height:
+        calc(100vh - 24px);
+
+
+      overflow:
+        auto;
+
+
+      box-sizing:
+        border-box;
+
+
+      padding:
+        14px;
+
+
+      border:
+
+        1px solid
+        var(
+          --border-color,
+          rgba(148,163,184,.28)
+        );
+
+
+      border-radius:
+        16px;
+
+
+      background:
+
+        var(
+          --card-bg,
+          #ffffff
+        );
+
+
+      color:
+
+        var(
+          --text-primary,
+          #0f172a
         );
 
 
       box-shadow:
 
-        0 4px 14px
-        rgba(15, 23, 42, 0.05);
+        0 18px 45px
+        rgba(
+          15,
+          23,
+          42,
+          .18
+        ),
+
+        0 4px 12px
+        rgba(
+          15,
+          23,
+          42,
+          .08
+        );
 
 
       backdrop-filter:
-        blur(8px);
+        blur(14px);
+    }
 
-      -webkit-backdrop-filter:
-        blur(8px);
+
+
+    #${PANEL_ID}[
+      data-open="true"
+    ] {
+
+      display:
+        block;
+    }
+
+
+
+    /* ========================================================
+       CABEÇALHO
+       ======================================================== */
+
+    #${PANEL_ID}
+    .head {
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        space-between;
+
+      gap:
+        10px;
+
+
+      margin-bottom:
+        12px;
     }
 
 
 
     #${PANEL_ID}
-    .medsim-filter-field {
+    .title {
+
+      font-size:
+        .95rem;
+
+      font-weight:
+        800;
+    }
+
+
+
+    #${PANEL_ID}
+    .close {
+
+      width:
+        32px;
+
+      height:
+        32px;
+
+
+      border:
+        0;
+
+
+      border-radius:
+        9px;
+
+
+      background:
+        transparent;
+
+
+      color:
+
+        var(
+          --text-secondary,
+          #64748b
+        );
+
+
+      font:
+        inherit;
+
+
+      font-size:
+        20px;
+
+
+      cursor:
+        pointer;
+    }
+
+
+
+    /* ========================================================
+       CAMPOS
+       ======================================================== */
+
+    #${PANEL_ID}
+    .grid {
+
+      display:
+        grid;
+
+
+      grid-template-columns:
+        1fr 1fr;
+
+
+      gap:
+        10px;
+    }
+
+
+
+    #${PANEL_ID}
+    label.field {
 
       display:
         flex;
 
+
       flex-direction:
         column;
+
 
       gap:
         5px;
 
 
       min-width:
-        145px;
-
-
-      flex:
-        1 1 145px;
+        0;
     }
 
 
 
     #${PANEL_ID}
-    .medsim-filter-label {
+    .full {
 
-      font-family:
-        inherit;
+      grid-column:
+        1 / -1;
+    }
 
+
+
+    #${PANEL_ID}
+    .label {
 
       font-size:
-        0.76rem;
+        .74rem;
 
 
       font-weight:
@@ -225,7 +495,11 @@
 
 
       min-height:
-        38px;
+        39px;
+
+
+      box-sizing:
+        border-box;
 
 
       padding:
@@ -261,16 +535,12 @@
         );
 
 
-      font-family:
+      font:
         inherit;
 
 
       outline:
         none;
-
-
-      cursor:
-        pointer;
     }
 
 
@@ -293,25 +563,41 @@
           99,
           102,
           241,
-          0.12
+          .12
         );
     }
 
 
 
     /* ========================================================
-       BOTÃO FAVORITOS
+       FAVORITOS
        ======================================================== */
 
     #${PANEL_ID}
-    .medsim-fav-filter {
+    .favcheck {
+
+      display:
+        flex;
+
+
+      align-items:
+        center;
+
+
+      gap:
+        9px;
+
 
       min-height:
-        38px;
+        39px;
 
 
       padding:
-        8px 12px;
+        8px 10px;
+
+
+      box-sizing:
+        border-box;
 
 
       border:
@@ -327,95 +613,123 @@
         10px;
 
 
-      background:
-
-        var(
-          --card-bg,
-          #ffffff
-        );
-
-
-      color:
-
-        var(
-          --text-primary,
-          #0f172a
-        );
-
-
-      font-family:
-        inherit;
-
-
-      font-weight:
-        700;
-
-
       cursor:
         pointer;
 
 
-      transition:
-        0.15s ease;
+      user-select:
+        none;
     }
 
 
 
     #${PANEL_ID}
-    .medsim-fav-filter:hover {
+    .favcheck input {
 
-      transform:
-        translateY(-1px);
-    }
-
-
-
-    #${PANEL_ID}
-    .medsim-fav-filter[
-      data-active="true"
-    ] {
-
-      border-color:
+      accent-color:
         #f59e0b;
-
-
-      background:
-
-        rgba(
-          245,
-          158,
-          11,
-          0.10
-        );
-
-
-      color:
-        #b45309;
     }
 
 
 
     /* ========================================================
-       LIMPAR FILTROS
+       RESUMO
        ======================================================== */
 
     #${PANEL_ID}
-    .medsim-clear-filter {
+    .summary {
+
+      margin-top:
+        11px;
+
+
+      padding-top:
+        10px;
+
+
+      border-top:
+
+        1px solid
+        var(
+          --border-color,
+          rgba(148,163,184,.20)
+        );
+
+
+      color:
+
+        var(
+          --text-secondary,
+          #64748b
+        );
+
+
+      font-size:
+        .77rem;
+    }
+
+
+
+    /* ========================================================
+       BOTÕES
+       ======================================================== */
+
+    #${PANEL_ID}
+    .actions {
+
+      display:
+        grid;
+
+
+      grid-template-columns:
+        1fr 1.6fr;
+
+
+      gap:
+        8px;
+
+
+      margin-top:
+        12px;
+    }
+
+
+
+    #${PANEL_ID}
+    .actions button {
 
       min-height:
-        38px;
-
-
-      padding:
-        8px 12px;
-
-
-      border:
-        1px solid transparent;
+        40px;
 
 
       border-radius:
         10px;
+
+
+      font:
+        inherit;
+
+
+      font-weight:
+        750;
+
+
+      cursor:
+        pointer;
+    }
+
+
+
+    #${PANEL_ID}
+    .clear {
+
+      border:
+
+        1px solid
+        var(
+          --border-color,
+          #dbe2ea
+        );
 
 
       background:
@@ -428,83 +742,48 @@
           --text-secondary,
           #64748b
         );
-
-
-      font-family:
-        inherit;
-
-
-      font-weight:
-        700;
-
-
-      cursor:
-        pointer;
     }
 
 
 
     #${PANEL_ID}
-    .medsim-clear-filter:hover {
+    .apply {
 
-      background:
-
-        rgba(
-          148,
-          163,
-          184,
-          0.08
-        );
-    }
-
-
-
-    /* ========================================================
-       RESUMO
-       ======================================================== */
-
-    #${PANEL_ID}
-    .medsim-filter-summary {
-
-      flex:
-        1 0 100%;
-
-
-      display:
-        flex;
-
-
-      justify-content:
-        space-between;
-
-
-      gap:
-        10px;
-
-
-      padding-top:
-        2px;
-
-
-      font-size:
-        0.78rem;
+      border:
+        1px solid transparent;
 
 
       color:
+        #ffffff;
 
-        var(
-          --text-secondary,
-          #64748b
+
+      background:
+
+        linear-gradient(
+          135deg,
+          #4f46e5,
+          #7c3aed
+        );
+
+
+      box-shadow:
+
+        0 4px 12px
+        rgba(
+          79,
+          70,
+          229,
+          .20
         );
     }
 
 
 
     /* ========================================================
-       OCULTAR SIMULADOS
+       SIMULADO FILTRADO
        ======================================================== */
 
-    .${HIDDEN_CLASS} {
+    .${HIDE} {
 
       display:
         none !important;
@@ -513,10 +792,18 @@
 
 
     /* ========================================================
-       ESTRELA DE FAVORITO
+       FAVORITO NO CARD
        ======================================================== */
 
-    .medsim-favorite-toggle {
+    .medsim-filter-card {
+
+      position:
+        relative !important;
+    }
+
+
+
+    .medsim-fav-star {
 
       position:
         absolute !important;
@@ -531,7 +818,7 @@
 
 
       z-index:
-        20 !important;
+        25 !important;
 
 
       display:
@@ -547,11 +834,11 @@
 
 
       width:
-        34px !important;
+        32px !important;
 
 
       height:
-        34px !important;
+        32px !important;
 
 
       padding:
@@ -569,14 +856,14 @@
           148,
           163,
           184,
-          0.24
+          .28
         )
 
         !important;
 
 
       border-radius:
-        10px !important;
+        9px !important;
 
 
       background:
@@ -585,7 +872,7 @@
           255,
           255,
           255,
-          0.92
+          .92
         )
 
         !important;
@@ -595,12 +882,12 @@
         #94a3b8 !important;
 
 
-      font-family:
+      font:
         inherit !important;
 
 
       font-size:
-        18px !important;
+        17px !important;
 
 
       line-height:
@@ -618,31 +905,15 @@
           15,
           23,
           42,
-          0.08
+          .08
         )
 
         !important;
-
-
-      transition:
-        0.15s ease !important;
     }
 
 
 
-    .medsim-favorite-toggle:hover {
-
-      transform:
-
-        translateY(-1px)
-        scale(1.05)
-
-        !important;
-    }
-
-
-
-    .medsim-favorite-toggle[
+    .medsim-fav-star[
       data-favorite="true"
     ] {
 
@@ -660,18 +931,10 @@
           245,
           158,
           11,
-          0.35
+          .35
         )
 
         !important;
-    }
-
-
-
-    .medsim-filtro-item {
-
-      position:
-        relative !important;
     }
 
 
@@ -682,52 +945,33 @@
 
     @media (
       max-width:
-      700px
+      600px
     ) {
 
-      #${PANEL_ID} {
+      #${PANEL_ID}
+      .grid {
 
-        padding:
-          10px;
-
-        gap:
-          8px;
+        grid-template-columns:
+          1fr;
       }
 
 
       #${PANEL_ID}
-      .medsim-filter-field {
+      .full {
 
-        flex-basis:
-          calc(50% - 4px);
-
-        min-width:
-          120px;
+        grid-column:
+          auto;
       }
 
 
-      #${PANEL_ID}
-      .medsim-filter-actions {
+      #${TRIGGER_ID} {
 
-        width:
-          100%;
-
-
-        display:
-          flex;
+        margin-left:
+          6px;
 
 
-        gap:
-          8px;
-      }
-
-
-      #${PANEL_ID}
-      .medsim-filter-actions
-      button {
-
-        flex:
-          1;
+        padding-inline:
+          9px;
       }
 
     }
@@ -740,15 +984,15 @@
      UTILIDADES
      ============================================================ */
 
-  function parseJSON(
-    valor,
+  function j(
+    value,
     fallback
   ) {
 
     try {
 
       return JSON.parse(
-        valor
+        value
       );
 
     } catch (_) {
@@ -759,12 +1003,12 @@
 
 
 
-  function normalizarTexto(
-    valor
+  function txt(
+    value
   ) {
 
     return String(
-      valor || ''
+      value || ''
     )
 
       .normalize(
@@ -788,43 +1032,41 @@
 
 
 
-  function normalizarCaminho(
-    valor
+  function path(
+    value
   ) {
 
-    if (!valor) {
+    if (!value) {
 
       return '';
     }
 
 
-    let texto =
+    let text =
       String(
-        valor
+        value
       ).trim();
 
 
     try {
 
-      const url =
-        new URL(
-          texto,
-          location.href
-        );
-
-
-      texto =
+      text =
         decodeURIComponent(
-          url.pathname
+
+          new URL(
+            text,
+            location.href
+          ).pathname
+
         );
 
     } catch (_) {
 
       try {
 
-        texto =
+        text =
           decodeURIComponent(
-            texto
+            text
           );
 
       } catch (_) {}
@@ -832,7 +1074,7 @@
     }
 
 
-    return texto
+    return text
 
       .replace(
         /\\/g,
@@ -854,31 +1096,35 @@
 
 
 
-  function basename(
-    caminho
+  function base(
+    value
   ) {
 
     return (
-      normalizarCaminho(
-        caminho
+
+      path(
+        value
       )
 
         .split('/')
 
         .pop()
 
-      || ''
+      ||
+
+      ''
+
     );
   }
 
 
 
-  function tituloDoArquivo(
-    arquivo
+  function titleFromFile(
+    value
   ) {
 
-    return basename(
-      arquivo
+    return base(
+      value
     )
 
       .replace(
@@ -902,45 +1148,41 @@
 
 
   /* ============================================================
-     DISCIPLINA
+     DISCIPLINA / ANO
      ============================================================ */
 
-  function detectarDisciplina(
-    arquivo,
-    titulo
+  function subject(
+    file,
+    title
   ) {
 
-    const fonte =
-      `${arquivo || ''} ${titulo || ''}`;
+    const source =
+      `${file} ${title}`;
 
 
-    const regra =
-      DISCIPLINAS.find(
-        item =>
-          item.rx.test(
-            fonte
+    const rule =
+      SUBJECTS.find(
+        ([rx]) =>
+          rx.test(
+            source
           )
       );
 
 
-    return regra
-      ? regra.nome
+    return rule
+      ? rule[1]
       : 'Outros';
   }
 
 
 
-  /* ============================================================
-     ANO
-     ============================================================ */
-
-  function detectarAno(
-    arquivo,
-    titulo
+  function year(
+    file,
+    title
   ) {
 
     const match =
-      `${arquivo || ''} ${titulo || ''}`
+      `${file} ${title}`
 
         .match(
           /\b(20\d{2})\b/
@@ -958,13 +1200,13 @@
      FAVORITOS
      ============================================================ */
 
-  function carregarFavoritos() {
+  function loadFavorites() {
 
-    const raw =
-      parseJSON(
+    const array =
+      j(
 
         localStorage.getItem(
-          FAVORITES_KEY
+          FAV_KEY
         ),
 
         []
@@ -972,41 +1214,35 @@
       );
 
 
-    if (
-      !Array.isArray(
-        raw
-      )
-    ) {
-
-      return new Set();
-    }
-
-
     return new Set(
 
-      raw
+      Array.isArray(
+        array
+      )
 
-        .map(
-          normalizarCaminho
-        )
+        ? array
+            .map(
+              path
+            )
+            .filter(
+              Boolean
+            )
 
-        .filter(
-          Boolean
-        )
+        : []
 
     );
   }
 
 
 
-  function salvarFavoritos() {
+  function saveFavorites() {
 
     localStorage.setItem(
 
-      FAVORITES_KEY,
+      FAV_KEY,
 
       JSON.stringify(
-        [...favoritos]
+        [...favorites]
       )
 
     );
@@ -1015,16 +1251,16 @@
 
 
   /* ============================================================
-     ESTADO DOS FILTROS
+     FILTROS SALVOS
      ============================================================ */
 
-  function carregarEstado() {
+  function loadFilters() {
 
-    const salvo =
-      parseJSON(
+    const object =
+      j(
 
         localStorage.getItem(
-          FILTERS_KEY
+          FILTER_KEY
         ),
 
         {}
@@ -1034,18 +1270,18 @@
 
     return {
 
-      disciplina:
-        salvo.disciplina || '',
+      subject:
+        object.subject || '',
 
-      ano:
-        salvo.ano || '',
+      year:
+        object.year || '',
 
       status:
-        salvo.status || '',
+        object.status || '',
 
-      somenteFavoritos:
+      favoritesOnly:
         Boolean(
-          salvo.somenteFavoritos
+          object.favoritesOnly
         )
 
     };
@@ -1053,14 +1289,14 @@
 
 
 
-  function salvarEstado() {
+  function saveFilters() {
 
     localStorage.setItem(
 
-      FILTERS_KEY,
+      FILTER_KEY,
 
       JSON.stringify(
-        estado
+        applied
       )
 
     );
@@ -1069,231 +1305,164 @@
 
 
   /* ============================================================
-     SIMULADOS.JSON
+     CONCLUÍDOS
      ============================================================ */
 
-  function normalizarManifesto(
-    raw
+  function collectStrings(
+    value,
+    output = []
   ) {
 
-    let dados =
-      [];
+    if (
+      value == null
+    ) {
+
+      return output;
+    }
+
+
+    if (
+      typeof value ===
+      'string'
+    ) {
+
+      output.push(
+        value
+      );
+
+
+      return output;
+    }
 
 
     if (
       Array.isArray(
-        raw
+        value
       )
     ) {
 
-      dados =
-        raw;
+      value.forEach(
+        item =>
+          collectStrings(
+            item,
+            output
+          )
+      );
 
-    } else if (
-      raw &&
-      Array.isArray(
-        raw.simulados
-      )
-    ) {
 
-      dados =
-        raw.simulados;
-
-    } else if (
-      raw &&
-      Array.isArray(
-        raw.items
-      )
-    ) {
-
-      dados =
-        raw.items;
+      return output;
     }
 
 
+    if (
+      typeof value ===
+      'object'
+    ) {
 
-    return dados
+      Object
+        .values(
+          value
+        )
 
-      .map(
-        item => {
-
-          let arquivo =
-            '';
-
-          let titulo =
-            '';
-
-          let disciplina =
-            '';
-
-          let ano =
-            '';
-
-
-          /*
-           * Aceita:
-           *
-           * ["arquivo.html"]
-           *
-           * ou:
-           *
-           * [{
-           *   file: "...",
-           *   title: "..."
-           * }]
-           */
-
-          if (
-            typeof item ===
-            'string'
-          ) {
-
-            arquivo =
-              item;
-
-          } else if (
-            item &&
-            typeof item ===
-            'object'
-          ) {
-
-            arquivo =
-
-              item.file ||
-
-              item.filename ||
-
-              item.path ||
-
-              item.url ||
-
-              item.href ||
-
-              item.src ||
-
-              item.arquivo ||
-
-              '';
+        .forEach(
+          item =>
+            collectStrings(
+              item,
+              output
+            )
+        );
+    }
 
 
-            titulo =
-
-              item.title ||
-
-              item.name ||
-
-              item.nome ||
-
-              item.label ||
-
-              '';
-
-
-            disciplina =
-
-              item.subject ||
-
-              item.disciplina ||
-
-              '';
-
-
-            ano =
-              String(
-
-                item.year ||
-
-                item.ano ||
-
-                ''
-
-              );
-          }
-
-
-          const caminho =
-            normalizarCaminho(
-              arquivo
-            );
-
-
-          if (
-            !caminho ||
-            !/\.html?$/i.test(
-              caminho
-            ) ||
-            basename(
-              caminho
-            ) ===
-              'index.html'
-          ) {
-
-            return null;
-          }
-
-
-          if (!titulo) {
-
-            titulo =
-              tituloDoArquivo(
-                caminho
-              );
-          }
-
-
-          if (!disciplina) {
-
-            disciplina =
-              detectarDisciplina(
-                caminho,
-                titulo
-              );
-          }
-
-
-          if (!ano) {
-
-            ano =
-              detectarAno(
-                caminho,
-                titulo
-              );
-          }
-
-
-          return {
-
-            arquivo:
-              caminho,
-
-            base:
-              basename(
-                caminho
-              ),
-
-            titulo,
-
-            disciplina,
-
-            ano
-
-          };
-
-        }
-      )
-
-      .filter(
-        Boolean
-      );
+    return output;
   }
 
 
 
-  async function carregarManifesto() {
+  function completedSet() {
+
+    const output =
+      new Set();
+
+
+    const raw =
+      j(
+
+        localStorage.getItem(
+          DONE_KEY
+        ),
+
+        []
+
+      );
+
+
+    collectStrings(
+      raw
+    )
+
+      .forEach(
+        value => {
+
+          const p =
+            path(
+              value
+            );
+
+
+          const b =
+            base(
+              value
+            );
+
+
+          const t =
+            txt(
+              value
+            );
+
+
+          if (p) {
+
+            output.add(
+              p
+            );
+          }
+
+
+          if (b) {
+
+            output.add(
+              b
+            );
+          }
+
+
+          if (t) {
+
+            output.add(
+              t
+            );
+          }
+
+        }
+      );
+
+
+    return output;
+  }
+
+
+
+  /* ============================================================
+     SIMULADOS.JSON
+     ============================================================ */
+
+  async function loadManifest() {
 
     try {
 
-      const resposta =
+      const response =
         await fetch(
 
           'simulados.json?v=' +
@@ -1308,44 +1477,215 @@
 
 
       if (
-        !resposta.ok
+        !response.ok
       ) {
 
         throw new Error(
           'HTTP ' +
-          resposta.status
+          response.status
         );
       }
 
 
+      const raw =
+        await response.json();
+
+
+      const array =
+        Array.isArray(
+          raw
+        )
+
+          ? raw
+
+          : (
+              raw.simulados ||
+              raw.items ||
+              []
+            );
+
+
       manifest =
-        normalizarManifesto(
+        array
 
-          await resposta.json()
+          .map(
+            item => {
 
-        );
+              let file =
+                '';
+
+              let title =
+                '';
+
+              let sub =
+                '';
+
+              let yr =
+                '';
 
 
-      manifestMap =
+              if (
+                typeof item ===
+                'string'
+              ) {
+
+                file =
+                  item;
+
+              } else if (
+                item &&
+                typeof item ===
+                'object'
+              ) {
+
+                file =
+
+                  item.file ||
+
+                  item.filename ||
+
+                  item.path ||
+
+                  item.url ||
+
+                  item.href ||
+
+                  item.src ||
+
+                  item.arquivo ||
+
+                  '';
+
+
+                title =
+
+                  item.title ||
+
+                  item.name ||
+
+                  item.nome ||
+
+                  item.label ||
+
+                  '';
+
+
+                sub =
+
+                  item.subject ||
+
+                  item.disciplina ||
+
+                  '';
+
+
+                yr =
+                  String(
+
+                    item.year ||
+
+                    item.ano ||
+
+                    ''
+
+                  );
+              }
+
+
+              const p =
+                path(
+                  file
+                );
+
+
+              if (
+                !p ||
+
+                !/\.html?$/i.test(
+                  p
+                ) ||
+
+                base(
+                  p
+                ) ===
+                  'index.html'
+              ) {
+
+                return null;
+              }
+
+
+              title =
+                title ||
+                titleFromFile(
+                  p
+                );
+
+
+              sub =
+                sub ||
+                subject(
+                  p,
+                  title
+                );
+
+
+              yr =
+                yr ||
+                year(
+                  p,
+                  title
+                );
+
+
+              return {
+
+                file:
+                  p,
+
+                base:
+                  base(
+                    p
+                  ),
+
+                title,
+
+                subject:
+                  sub,
+
+                year:
+                  yr
+
+              };
+
+            }
+          )
+
+          .filter(
+            Boolean
+          );
+
+
+      map =
         new Map();
 
 
       manifest.forEach(
         item => {
 
-          manifestMap.set(
-            item.arquivo,
+          map.set(
+            item.file,
             item
           );
 
 
-          manifestMap.set(
+          map.set(
             item.base,
             item
           );
 
 
-          manifestMap.set(
+          map.set(
 
             'simulados/' +
             item.base,
@@ -1358,323 +1698,70 @@
       );
 
 
-    } catch (erro) {
-
-      console.warn(
-
-        '[MedSim] Não foi possível ler simulados.json. ' +
-        'Os filtros usarão os links encontrados no Hub.',
-
-        erro
-
-      );
-
+    } catch (error) {
 
       manifest =
         [];
 
 
-      manifestMap =
+      map =
         new Map();
+
+
+      console.warn(
+
+        '[MedSim] Filtros: não foi possível ler simulados.json.',
+
+        error
+
+      );
     }
   }
 
 
 
   /* ============================================================
-     CONCLUÍDOS
+     IDENTIFICAR SIMULADO
      ============================================================ */
 
-  function extrairStrings(
-    valor,
-    saida = []
+  function fileFrom(
+    element
   ) {
 
-    if (
-      valor == null
-    ) {
+    const attributes = [
 
-      return saida;
-    }
-
-
-    if (
-      typeof valor ===
-      'string'
-    ) {
-
-      saida.push(
-        valor
-      );
-
-
-      return saida;
-    }
-
-
-    if (
-      Array.isArray(
-        valor
-      )
-    ) {
-
-      valor.forEach(
-        item => {
-
-          extrairStrings(
-            item,
-            saida
-          );
-
-        }
-      );
-
-
-      return saida;
-    }
-
-
-    if (
-      typeof valor ===
-      'object'
-    ) {
-
-      Object.values(
-        valor
-      )
-
-        .forEach(
-          item => {
-
-            extrairStrings(
-              item,
-              saida
-            );
-
-          }
-        );
-    }
-
-
-    return saida;
-  }
-
-
-
-  function carregarConcluidos() {
-
-    const raw =
-      parseJSON(
-
-        localStorage.getItem(
-          COMPLETED_KEY
-        ),
-
-        []
-
-      );
-
-
-    const set =
-      new Set();
-
-
-    extrairStrings(
-      raw
-    )
-
-      .forEach(
-        valor => {
-
-          const caminho =
-            normalizarCaminho(
-              valor
-            );
-
-
-          const base =
-            basename(
-              caminho
-            );
-
-
-          const texto =
-            normalizarTexto(
-              valor
-            );
-
-
-          if (caminho) {
-
-            set.add(
-              caminho
-            );
-          }
-
-
-          if (base) {
-
-            set.add(
-              base
-            );
-          }
-
-
-          if (texto) {
-
-            set.add(
-              texto
-            );
-          }
-
-        }
-      );
-
-
-    return set;
-  }
-
-
-
-  /* ============================================================
-     BUSCA EXISTENTE
-     ============================================================ */
-
-  function detectarBusca() {
-
-    const inputs = [
-
-      ...document.querySelectorAll(
-        'input'
-      )
+      'href',
+      'data-file',
+      'data-path',
+      'data-src',
+      'data-simulado',
+      'data-arquivo'
 
     ];
 
 
-    buscaInput =
-      inputs.find(
-        input => {
-
-          const tipo =
-            (
-              input.type ||
-              ''
-            ).toLowerCase();
-
-
-          const dica =
-            normalizarTexto(
-
-              `${input.placeholder || ''}
-               ${input.getAttribute('aria-label') || ''}
-               ${input.id || ''}
-               ${input.className || ''}`
-
-            );
-
-
-          return (
-
-            tipo ===
-              'search'
-
-            ||
-
-            /buscar|pesquisar|search|simulado/
-              .test(
-                dica
-              )
-
-          );
-        }
-      )
-
-      || null;
-
-
-    if (
-      buscaInput &&
-      buscaInput.dataset
-        .medsimFiltros !==
-        '1'
-    ) {
-
-      buscaInput.dataset
-        .medsimFiltros =
-        '1';
-
-
-      buscaInput.addEventListener(
-
-        'input',
-
-        agendarAplicacao
-
-      );
-
-
-      buscaInput.addEventListener(
-
-        'search',
-
-        agendarAplicacao
-
-      );
-    }
-  }
-
-
-
-  /* ============================================================
-     IDENTIFICAR ARQUIVO DO SIMULADO
-     ============================================================ */
-
-  function obterCaminho(
-    elemento
-  ) {
-
-    const atributos = [
-
-      elemento.getAttribute(
-        'href'
-      ),
-
-      elemento.getAttribute(
-        'data-file'
-      ),
-
-      elemento.getAttribute(
-        'data-path'
-      ),
-
-      elemento.getAttribute(
-        'data-src'
-      ),
-
-      elemento.getAttribute(
-        'data-simulado'
-      )
-
-    ].filter(
-      Boolean
-    );
-
-
     for (
-      const valor
-      of atributos
+      const attribute
+      of attributes
     ) {
+
+      const value =
+        element.getAttribute &&
+        element.getAttribute(
+          attribute
+        );
+
 
       if (
-        /\.html?(?:[?#]|$)/i
-          .test(
-            valor
-          )
+        value &&
+        /\.html?(?:[?#]|$)/i.test(
+          value
+        )
       ) {
 
-        return normalizarCaminho(
+        return path(
 
-          valor.split(
+          value.split(
             /[?#]/
           )[0]
 
@@ -1684,18 +1771,19 @@
 
 
 
-    /*
-     * Caso seja:
-     *
-     * onclick="carregarSimulado('arquivo.html')"
-     */
-
     const onclick =
-      elemento.getAttribute(
-        'onclick'
+
+      (
+        element.getAttribute &&
+        element.getAttribute(
+          'onclick'
+        )
       )
 
-      || '';
+      ||
+
+      '';
+
 
 
     const match =
@@ -1706,82 +1794,67 @@
       );
 
 
-    if (
-      match
-    ) {
+    return match
 
-      return normalizarCaminho(
+      ? path(
+          match[1]
+            .split(
+              /[?#]/
+            )[0]
+        )
 
-        match[1].split(
-          /[?#]/
-        )[0]
-
-      );
-    }
-
-
-    return '';
+      : '';
   }
 
 
 
-  /* ============================================================
-     METADADOS
-     ============================================================ */
-
-  function obterMetadados(
-    caminho,
-    elemento
+  function metaFor(
+    p,
+    element
   ) {
 
-    const normalizado =
-      normalizarCaminho(
-        caminho
+    const b =
+      base(
+        p
       );
 
 
-    const base =
-      basename(
-        normalizado
-      );
+    const known =
 
-
-    const conhecido =
-
-      manifestMap.get(
-        normalizado
+      map.get(
+        p
       )
 
       ||
 
-      manifestMap.get(
-        base
+      map.get(
+        b
       )
 
       ||
 
-      manifestMap.get(
-
+      map.get(
         'simulados/' +
-        base
-
+        b
       );
 
 
     if (
-      conhecido
+      known
     ) {
 
-      return conhecido;
+      return known;
     }
 
 
     if (
-      !normalizado ||
+      !p ||
+
       !/\.html?$/i.test(
-        normalizado
+        p
       ) ||
-      base ===
+
+      b ===
         'index.html'
     ) {
 
@@ -1789,39 +1862,40 @@
     }
 
 
-    const titulo =
+    const title =
 
       (
-        elemento.textContent ||
+        element.textContent ||
         ''
       ).trim()
 
       ||
 
-      tituloDoArquivo(
-        normalizado
+      titleFromFile(
+        p
       );
 
 
     return {
 
-      arquivo:
-        normalizado,
+      file:
+        p,
 
-      base,
+      base:
+        b,
 
-      titulo,
+      title,
 
-      disciplina:
-        detectarDisciplina(
-          normalizado,
-          titulo
+      subject:
+        subject(
+          p,
+          title
         ),
 
-      ano:
-        detectarAno(
-          normalizado,
-          titulo
+      year:
+        year(
+          p,
+          title
         )
 
     };
@@ -1829,82 +1903,65 @@
 
 
 
-  /* ============================================================
-     CONTAINER DO CARD
-     ============================================================ */
-
-  function obterContainer(
-    elemento
+  function cardFor(
+    element
   ) {
 
-    const seletores = [
+    const selectors = [
 
       '[data-simulado-item]',
-
       '.simulado-card',
-
       '.simulado-item',
-
       '.simulation-card',
-
       '.card',
-
       'article',
-
       'li'
 
     ];
 
 
     for (
-      const seletor
-      of seletores
+      const selector
+      of selectors
     ) {
 
-      const encontrado =
-        elemento.closest(
-          seletor
+      const card =
+        element.closest &&
+        element.closest(
+          selector
         );
 
 
       if (
-        encontrado &&
-        !encontrado.closest(
+        card &&
+        !card.closest(
           '#' + PANEL_ID
         )
       ) {
 
-        return encontrado;
+        return card;
       }
     }
 
 
-    /*
-     * Fallback.
-     */
+    return (
 
-    if (
-      elemento.parentElement &&
-      elemento.parentElement !==
+      element.parentElement &&
+      element.parentElement !==
         document.body
-    ) {
 
-      return elemento.parentElement;
-    }
+        ? element.parentElement
 
+        : element
 
-    return elemento;
+    );
   }
 
 
 
-  /* ============================================================
-     COLETAR SIMULADOS VISÍVEIS NO HUB
-     ============================================================ */
+  function items() {
 
-  function coletarItens() {
-
-    const seletores = [
+    const selector = [
 
       'a[href*=".html"]',
 
@@ -1918,111 +1975,67 @@
 
       '[data-src*=".html"]',
 
-      '[data-simulado*=".html"]'
+      '[data-simulado*=".html"]',
+
+      '[data-arquivo*=".html"]'
 
     ].join(
       ','
     );
 
 
-    const resultado =
+    const output =
       [];
 
 
-    const containers =
+    const seen =
       new Set();
-
 
 
     document
       .querySelectorAll(
-        seletores
+        selector
       )
 
       .forEach(
-        elemento => {
+        element => {
 
           if (
-            elemento.closest(
+            element.closest(
               '#' + PANEL_ID
-            )
+            ) ||
+
+            element.id ===
+              TRIGGER_ID
           ) {
 
             return;
           }
 
 
-          const caminho =
-            obterCaminho(
-              elemento
+          const p =
+            fileFrom(
+              element
             );
 
 
           const meta =
-            obterMetadados(
-              caminho,
-              elemento
+            metaFor(
+              p,
+              element
             );
-
-
-          if (
-            !meta
-          ) {
-
-            return;
-          }
-
-
-
-          /*
-           * Se simulados.json foi carregado,
-           * só considera arquivos que aparecem nele.
-           */
-
-          if (
-            manifest.length
-          ) {
-
-            const conhecido =
-
-              manifestMap.has(
-                meta.arquivo
-              )
-
-              ||
-
-              manifestMap.has(
-                meta.base
-              )
-
-              ||
-
-              manifestMap.has(
-
-                'simulados/' +
-                meta.base
-
-              );
-
-
-            if (
-              !conhecido
-            ) {
-
-              return;
-            }
-          }
 
 
           const container =
-            obterContainer(
-              elemento
+            cardFor(
+              element
             );
 
 
           if (
+            !meta ||
             !container ||
-            containers.has(
+            seen.has(
               container
             )
           ) {
@@ -2031,14 +2044,14 @@
           }
 
 
-          containers.add(
+          seen.add(
             container
           );
 
 
-          resultado.push({
+          output.push({
 
-            elemento,
+            element,
 
             container,
 
@@ -2050,7 +2063,506 @@
       );
 
 
-    return resultado;
+    return output;
+  }
+
+
+
+  /* ============================================================
+     CONCLUÍDO / FAVORITO
+     ============================================================ */
+
+  function isDone(
+    item,
+    done
+  ) {
+
+    return [
+
+      item.meta.file,
+
+      item.meta.base,
+
+      txt(
+        item.meta.title
+      ),
+
+      txt(
+        item.container
+          .textContent ||
+        ''
+      )
+
+    ]
+
+      .filter(
+        Boolean
+      )
+
+      .some(
+        value =>
+          done.has(
+            value
+          )
+      );
+  }
+
+
+
+  function favKey(
+    meta
+  ) {
+
+    return (
+      meta.file ||
+      meta.base
+    );
+  }
+
+
+
+  function isFav(
+    meta
+  ) {
+
+    return (
+
+      favorites.has(
+        favKey(
+          meta
+        )
+      )
+
+      ||
+
+      favorites.has(
+        meta.base
+      )
+
+    );
+  }
+
+
+
+  /* ============================================================
+     ESTRELA DE FAVORITO
+     ============================================================ */
+
+  function addStar(
+    item
+  ) {
+
+    item.container.classList.add(
+      'medsim-filter-card'
+    );
+
+
+    let button =
+      item.container.querySelector(
+
+        ':scope > .medsim-fav-star'
+
+      );
+
+
+    if (
+      !button
+    ) {
+
+      button =
+        document.createElement(
+          'button'
+        );
+
+
+      button.type =
+        'button';
+
+
+      button.className =
+        'medsim-fav-star';
+
+
+      button.textContent =
+        '★';
+
+
+      item.container.appendChild(
+        button
+      );
+
+
+      button.addEventListener(
+
+        'click',
+
+        event => {
+
+          event.preventDefault();
+
+          event.stopPropagation();
+
+          event.stopImmediatePropagation();
+
+
+          const key =
+            button.dataset.key;
+
+
+          if (!key) {
+
+            return;
+          }
+
+
+          if (
+            favorites.has(
+              key
+            )
+          ) {
+
+            favorites.delete(
+              key
+            );
+
+          } else {
+
+            favorites.add(
+              key
+            );
+          }
+
+
+          saveFavorites();
+
+          refresh();
+
+        },
+
+        true
+
+      );
+    }
+
+
+    const key =
+      favKey(
+        item.meta
+      );
+
+
+    const yes =
+      isFav(
+        item.meta
+      );
+
+
+    button.dataset.key =
+      key;
+
+
+    button.dataset.favorite =
+      String(
+        yes
+      );
+
+
+    button.title =
+      yes
+
+        ? 'Remover dos favoritos'
+
+        : 'Adicionar aos favoritos';
+  }
+
+
+
+  /* ============================================================
+     APLICAR FILTROS
+     ============================================================ */
+
+  function activeCount() {
+
+    return [
+
+      applied.subject,
+
+      applied.year,
+
+      applied.status,
+
+      applied.favoritesOnly
+        ? 'x'
+        : ''
+
+    ]
+
+      .filter(
+        Boolean
+      )
+
+      .length;
+  }
+
+
+
+  function updateTrigger() {
+
+    const button =
+      document.getElementById(
+        TRIGGER_ID
+      );
+
+
+    if (!button) {
+
+      return;
+    }
+
+
+    const number =
+      activeCount();
+
+
+    button.dataset.active =
+      String(
+        number > 0
+      );
+
+
+    button.textContent =
+      number
+
+        ? `Filtros (${number})`
+
+        : 'Filtros';
+  }
+
+
+
+  function applyFilters() {
+
+    const done =
+      completedSet();
+
+
+    const list =
+      items();
+
+
+    let visible =
+      0;
+
+
+    list.forEach(
+      item => {
+
+        addStar(
+          item
+        );
+
+
+        const show =
+
+          (
+            !applied.subject ||
+
+            item.meta.subject ===
+              applied.subject
+          )
+
+          &&
+
+          (
+            !applied.year ||
+
+            item.meta.year ===
+              applied.year
+          )
+
+          &&
+
+          (
+            !applied.status
+
+            ||
+
+            (
+              applied.status ===
+                'concluido'
+
+                ? isDone(
+                    item,
+                    done
+                  )
+
+                : !isDone(
+                    item,
+                    done
+                  )
+            )
+          )
+
+          &&
+
+          (
+            !applied.favoritesOnly ||
+
+            isFav(
+              item.meta
+            )
+          );
+
+
+        item.container
+          .classList
+          .toggle(
+
+            HIDE,
+
+            !show
+
+          );
+
+
+        if (
+          show
+        ) {
+
+          visible++;
+        }
+
+      }
+    );
+
+
+    const summary =
+      document.querySelector(
+
+        '#' +
+        PANEL_ID +
+        ' .summary'
+
+      );
+
+
+    if (
+      summary
+    ) {
+
+      summary.textContent =
+
+        `${visible} ${
+          visible === 1
+            ? 'simulado exibido'
+            : 'simulados exibidos'
+        } · ${favorites.size} ${
+          favorites.size === 1
+            ? 'favorito'
+            : 'favoritos'
+        }`;
+    }
+
+
+    updateTrigger();
+  }
+
+
+
+  /* ============================================================
+     OPÇÕES
+     ============================================================ */
+
+  function opts(
+    values,
+    years = false
+  ) {
+
+    const array = [
+
+      ...new Set(
+        values.filter(
+          Boolean
+        )
+      )
+
+    ];
+
+
+    if (
+      years
+    ) {
+
+      return array.sort(
+        (a, b) => {
+
+          if (
+            a ===
+            'Sem ano'
+          ) {
+
+            return 1;
+          }
+
+
+          if (
+            b ===
+            'Sem ano'
+          ) {
+
+            return -1;
+          }
+
+
+          return (
+            Number(b) -
+            Number(a)
+          );
+        }
+      );
+    }
+
+
+    return array.sort(
+      (a, b) =>
+        a.localeCompare(
+          b,
+          'pt-BR'
+        )
+    );
+  }
+
+
+
+  function esc(
+    value
+  ) {
+
+    return String(
+      value
+    )
+
+      .replace(
+
+        /[&<>"]/g,
+
+        char => ({
+
+          '&':
+            '&amp;',
+
+          '<':
+            '&lt;',
+
+          '>':
+            '&gt;',
+
+          '"':
+            '&quot;'
+
+        })[char]
+
+      );
   }
 
 
@@ -2059,7 +2571,7 @@
      CSS
      ============================================================ */
 
-  function garantirCSS() {
+  function ensureStyle() {
 
     if (
       document.getElementById(
@@ -2093,1399 +2605,972 @@
 
 
   /* ============================================================
-     ORDENAÇÃO
-     ============================================================ */
-
-  function unicosOrdenados(
-    valores,
-    anos = false
-  ) {
-
-    const lista = [
-
-      ...new Set(
-        valores.filter(
-          Boolean
-        )
-      )
-
-    ];
-
-
-    if (
-      anos
-    ) {
-
-      return lista.sort(
-        (a, b) => {
-
-          if (
-            a ===
-            'Sem ano'
-          ) {
-
-            return 1;
-          }
-
-
-          if (
-            b ===
-            'Sem ano'
-          ) {
-
-            return -1;
-          }
-
-
-          return (
-            Number(b) -
-            Number(a)
-          );
-        }
-      );
-    }
-
-
-    return lista.sort(
-      (a, b) =>
-
-        a.localeCompare(
-          b,
-          'pt-BR'
-        )
-
-    );
-  }
-
-
-
-  /* ============================================================
-     ONDE INSERIR OS FILTROS
-     ============================================================ */
-
-  function encontrarAncora() {
-
-    detectarBusca();
-
-
-    /*
-     * Se encontrar a busca existente,
-     * coloca os filtros logo abaixo dela.
-     */
-
-    if (
-      buscaInput
-    ) {
-
-      const bloco =
-
-        buscaInput.closest(
-          '.search-container'
-        )
-
-        ||
-
-        buscaInput.closest(
-          '.search-box'
-        )
-
-        ||
-
-        buscaInput.closest(
-          '.search-bar'
-        )
-
-        ||
-
-        buscaInput.closest(
-          'form'
-        )
-
-        ||
-
-        buscaInput.parentElement;
-
-
-      if (
-        bloco &&
-        bloco.parentElement
-      ) {
-
-        return {
-
-          pai:
-            bloco.parentElement,
-
-          depois:
-            bloco
-
-        };
-      }
-    }
-
-
-    /*
-     * Fallback: início do conteúdo principal.
-     */
-
-    const main =
-      document.querySelector(
-
-        'main, .main-content, .content, #main-content, #content'
-
-      );
-
-
-    if (
-      main
-    ) {
-
-      return {
-
-        pai:
-          main,
-
-        antes:
-          main.firstChild
-
-      };
-    }
-
-
-    return {
-
-      pai:
-        document.body,
-
-      antes:
-        document.body.firstChild
-
-    };
-  }
-
-
-
-  /* ============================================================
-     OPTION
-     ============================================================ */
-
-  function criarOption(
-    valor,
-    texto,
-    selecionado
-  ) {
-
-    const option =
-      document.createElement(
-        'option'
-      );
-
-
-    option.value =
-      valor;
-
-
-    option.textContent =
-      texto;
-
-
-    option.selected =
-      selecionado ===
-      valor;
-
-
-    return option;
-  }
-
-
-
-  /* ============================================================
-     CAMPO
-     ============================================================ */
-
-  function criarCampo(
-    titulo,
-    select
-  ) {
-
-    const campo =
-      document.createElement(
-        'label'
-      );
-
-
-    campo.className =
-      'medsim-filter-field';
-
-
-    const label =
-      document.createElement(
-        'span'
-      );
-
-
-    label.className =
-      'medsim-filter-label';
-
-
-    label.textContent =
-      titulo;
-
-
-    campo.append(
-      label,
-      select
-    );
-
-
-    return campo;
-  }
-
-
-
-  /* ============================================================
      PAINEL
      ============================================================ */
 
-  function criarPainel(
-    itens
-  ) {
+  function buildPanel() {
 
-    let painel =
+    let panel =
       document.getElementById(
         PANEL_ID
       );
 
 
     if (
-      painel
+      panel
     ) {
 
-      return painel;
+      return panel;
     }
 
 
-    painel =
+    panel =
       document.createElement(
         'section'
       );
 
 
-    painel.id =
+    panel.id =
       PANEL_ID;
 
 
-    painel.setAttribute(
-      'aria-label',
-      'Filtros de simulados'
-    );
+    panel.dataset.open =
+      'false';
 
 
+    panel.innerHTML = `
 
-    /* --------------------------------------------------------
-       DISCIPLINA
-       -------------------------------------------------------- */
+      <div class="head">
 
-    const selectDisciplina =
-      document.createElement(
-        'select'
-      );
+        <div class="title">
+          Filtrar simulados
+        </div>
 
+        <button
+          type="button"
+          class="close"
+          aria-label="Fechar">
 
-    selectDisciplina.id =
-      'medsim-filter-disciplina';
+          ×
 
+        </button>
 
-    selectDisciplina.appendChild(
+      </div>
 
-      criarOption(
-        '',
-        'Todas',
-        estado.disciplina
-      )
 
-    );
+      <div class="grid">
 
+        <label class="field">
 
-    unicosOrdenados(
+          <span class="label">
+            Disciplina
+          </span>
 
-      itens.map(
-        item =>
-          item.meta.disciplina
-      )
+          <select data-f="subject">
 
-    ).forEach(
-      disciplina => {
+            <option value="">
+              Todas
+            </option>
 
-        selectDisciplina.appendChild(
+          </select>
 
-          criarOption(
-            disciplina,
-            disciplina,
-            estado.disciplina
-          )
+        </label>
 
-        );
 
-      }
-    );
+        <label class="field">
 
+          <span class="label">
+            Ano
+          </span>
 
+          <select data-f="year">
 
-    /* --------------------------------------------------------
-       ANO
-       -------------------------------------------------------- */
+            <option value="">
+              Todos
+            </option>
 
-    const selectAno =
-      document.createElement(
-        'select'
-      );
+          </select>
 
+        </label>
 
-    selectAno.id =
-      'medsim-filter-ano';
 
+        <label class="field full">
 
-    selectAno.appendChild(
+          <span class="label">
+            Status
+          </span>
 
-      criarOption(
-        '',
-        'Todos',
-        estado.ano
-      )
+          <select data-f="status">
 
-    );
+            <option value="">
+              Todos
+            </option>
 
+            <option value="concluido">
+              Concluídos
+            </option>
 
-    unicosOrdenados(
+            <option value="pendente">
+              Não concluídos
+            </option>
 
-      itens.map(
-        item =>
-          item.meta.ano
-      ),
+          </select>
 
-      true
+        </label>
 
-    ).forEach(
-      ano => {
 
-        selectAno.appendChild(
+        <label class="favcheck full">
 
-          criarOption(
-            ano,
-            ano,
-            estado.ano
-          )
+          <input
+            type="checkbox"
+            data-f="favoritesOnly">
 
-        );
+          <span>
+            Mostrar somente favoritos
+          </span>
 
-      }
-    );
+        </label>
 
+      </div>
 
 
-    /* --------------------------------------------------------
-       STATUS
-       -------------------------------------------------------- */
+      <div class="summary">
 
-    const selectStatus =
-      document.createElement(
-        'select'
-      );
+        Filtros prontos.
 
+      </div>
 
-    selectStatus.id =
-      'medsim-filter-status';
 
+      <div class="actions">
 
-    selectStatus.append(
+        <button
+          type="button"
+          class="clear">
 
-      criarOption(
-        '',
-        'Todos',
-        estado.status
-      ),
+          Limpar
 
-      criarOption(
-        'concluido',
-        'Concluídos',
-        estado.status
-      ),
+        </button>
 
-      criarOption(
-        'pendente',
-        'Não concluídos',
-        estado.status
-      )
 
-    );
+        <button
+          type="button"
+          class="apply">
 
+          Aplicar e fechar
 
+        </button>
 
-    /* --------------------------------------------------------
-       FAVORITOS
-       -------------------------------------------------------- */
-
-    const btnFavoritos =
-      document.createElement(
-        'button'
-      );
-
-
-    btnFavoritos.type =
-      'button';
-
-
-    btnFavoritos.id =
-      'medsim-filter-favoritos';
-
-
-    btnFavoritos.className =
-      'medsim-fav-filter';
-
-
-    btnFavoritos.textContent =
-      '★ Favoritos';
-
-
-    btnFavoritos.dataset.active =
-      String(
-        estado.somenteFavoritos
-      );
-
-
-    btnFavoritos.setAttribute(
-
-      'aria-pressed',
-
-      String(
-        estado.somenteFavoritos
-      )
-
-    );
-
-
-
-    /* --------------------------------------------------------
-       LIMPAR
-       -------------------------------------------------------- */
-
-    const btnLimpar =
-      document.createElement(
-        'button'
-      );
-
-
-    btnLimpar.type =
-      'button';
-
-
-    btnLimpar.className =
-      'medsim-clear-filter';
-
-
-    btnLimpar.textContent =
-      'Limpar filtros';
-
-
-
-    const acoes =
-      document.createElement(
-        'div'
-      );
-
-
-    acoes.className =
-      'medsim-filter-actions';
-
-
-    acoes.append(
-      btnFavoritos,
-      btnLimpar
-    );
-
-
-
-    /* --------------------------------------------------------
-       CONTADORES
-       -------------------------------------------------------- */
-
-    const resumo =
-      document.createElement(
-        'div'
-      );
-
-
-    resumo.className =
-      'medsim-filter-summary';
-
-
-    resumo.innerHTML = `
-
-      <span id="medsim-filter-count">
-        0 simulados
-      </span>
-
-      <span id="medsim-filter-fav-count">
-        0 favoritos
-      </span>
+      </div>
 
     `;
 
 
-
-    painel.append(
-
-      criarCampo(
-        'Disciplina',
-        selectDisciplina
-      ),
-
-      criarCampo(
-        'Ano',
-        selectAno
-      ),
-
-      criarCampo(
-        'Status',
-        selectStatus
-      ),
-
-      acoes,
-
-      resumo
-
+    document.body.appendChild(
+      panel
     );
 
 
+    panel
+      .querySelector(
+        '.close'
+      )
 
-    /* --------------------------------------------------------
-       INSERÇÃO
-       -------------------------------------------------------- */
+      .onclick =
+        closePanel;
 
-    const ancora =
-      encontrarAncora();
 
 
-    if (
-      ancora.depois
-    ) {
+    panel
+      .querySelector(
+        '.clear'
+      )
 
-      ancora.depois
-        .insertAdjacentElement(
-          'afterend',
-          painel
-        );
+      .onclick =
+        () => {
 
-    } else {
+          draft = {
 
-      ancora.pai.insertBefore(
-
-        painel,
-
-        ancora.antes ||
-        null
-
-      );
-    }
-
-
-
-    /* ========================================================
-       EVENTOS
-       ======================================================== */
-
-    selectDisciplina
-      .addEventListener(
-
-        'change',
-
-        function () {
-
-          estado.disciplina =
-            selectDisciplina.value;
-
-
-          salvarEstado();
-
-          aplicarFiltros();
-        }
-
-      );
-
-
-
-    selectAno
-      .addEventListener(
-
-        'change',
-
-        function () {
-
-          estado.ano =
-            selectAno.value;
-
-
-          salvarEstado();
-
-          aplicarFiltros();
-        }
-
-      );
-
-
-
-    selectStatus
-      .addEventListener(
-
-        'change',
-
-        function () {
-
-          estado.status =
-            selectStatus.value;
-
-
-          salvarEstado();
-
-          aplicarFiltros();
-        }
-
-      );
-
-
-
-    btnFavoritos
-      .addEventListener(
-
-        'click',
-
-        function () {
-
-          estado.somenteFavoritos =
-            !estado.somenteFavoritos;
-
-
-          btnFavoritos.dataset.active =
-            String(
-              estado.somenteFavoritos
-            );
-
-
-          btnFavoritos.setAttribute(
-
-            'aria-pressed',
-
-            String(
-              estado.somenteFavoritos
-            )
-
-          );
-
-
-          salvarEstado();
-
-          aplicarFiltros();
-        }
-
-      );
-
-
-
-    btnLimpar
-      .addEventListener(
-
-        'click',
-
-        function () {
-
-          estado = {
-
-            disciplina:
+            subject:
               '',
 
-            ano:
+            year:
               '',
 
             status:
               '',
 
-            somenteFavoritos:
+            favoritesOnly:
               false
 
           };
 
 
-          selectDisciplina.value =
-            '';
+          syncPanel();
+        };
 
 
-          selectAno.value =
-            '';
+
+    panel
+      .querySelector(
+        '.apply'
+      )
+
+      .onclick =
+        () => {
+
+          readDraft();
 
 
-          selectStatus.value =
-            '';
+          applied = {
+            ...draft
+          };
 
 
-          btnFavoritos.dataset.active =
-            'false';
+          saveFilters();
+
+          applyFilters();
+
+          closePanel();
+        };
 
 
-          btnFavoritos.setAttribute(
-            'aria-pressed',
-            'false'
-          );
-
-
-          salvarEstado();
-
-          aplicarFiltros();
-        }
-
-      );
-
-
-    return painel;
+    return panel;
   }
 
 
 
   /* ============================================================
-     FAVORITO
+     POPULAR CAMPOS
      ============================================================ */
 
-  function chaveFavorito(
-    meta
-  ) {
+  function populate() {
 
-    return (
-      meta.arquivo ||
-      meta.base
-    );
-  }
+    const panel =
+      buildPanel();
 
 
-
-  function ehFavorito(
-    meta
-  ) {
-
-    return (
-
-      favoritos.has(
-        chaveFavorito(
-          meta
-        )
-      )
-
-      ||
-
-      favoritos.has(
-        meta.base
-      )
-
-    );
-  }
+    const list =
+      items();
 
 
+    const subjects =
 
-  function decorarFavorito(
-    item
-  ) {
+      opts(
 
-    const container =
-      item.container;
+        manifest.length
 
+          ? manifest.map(
+              item =>
+                item.subject
+            )
 
-    container.classList.add(
-      'medsim-filtro-item'
-    );
-
-
-    let botao =
-      container.querySelector(
-
-        ':scope > .medsim-favorite-toggle'
+          : list.map(
+              item =>
+                item.meta.subject
+            )
 
       );
 
 
+    const years =
+
+      opts(
+
+        manifest.length
+
+          ? manifest.map(
+              item =>
+                item.year
+            )
+
+          : list.map(
+              item =>
+                item.meta.year
+            ),
+
+        true
+
+      );
+
+
+    panel
+      .querySelector(
+        '[data-f="subject"]'
+      )
+
+      .innerHTML =
+
+        '<option value="">Todas</option>'
+
+        +
+
+        subjects
+          .map(
+            item =>
+              `<option value="${esc(item)}">${esc(item)}</option>`
+          )
+          .join(
+            ''
+          );
+
+
+
+    panel
+      .querySelector(
+        '[data-f="year"]'
+      )
+
+      .innerHTML =
+
+        '<option value="">Todos</option>'
+
+        +
+
+        years
+          .map(
+            item =>
+              `<option value="${esc(item)}">${esc(item)}</option>`
+          )
+          .join(
+            ''
+          );
+  }
+
+
+
+  function readDraft() {
+
+    const panel =
+      buildPanel();
+
+
+    draft = {
+
+      subject:
+
+        panel
+          .querySelector(
+            '[data-f="subject"]'
+          )
+          .value,
+
+
+      year:
+
+        panel
+          .querySelector(
+            '[data-f="year"]'
+          )
+          .value,
+
+
+      status:
+
+        panel
+          .querySelector(
+            '[data-f="status"]'
+          )
+          .value,
+
+
+      favoritesOnly:
+
+        panel
+          .querySelector(
+            '[data-f="favoritesOnly"]'
+          )
+          .checked
+
+    };
+  }
+
+
+
+  function syncPanel() {
+
+    const panel =
+      buildPanel();
+
+
+    populate();
+
+
+    panel
+      .querySelector(
+        '[data-f="subject"]'
+      )
+      .value =
+        draft.subject || '';
+
+
+    panel
+      .querySelector(
+        '[data-f="year"]'
+      )
+      .value =
+        draft.year || '';
+
+
+    panel
+      .querySelector(
+        '[data-f="status"]'
+      )
+      .value =
+        draft.status || '';
+
+
+    panel
+      .querySelector(
+        '[data-f="favoritesOnly"]'
+      )
+      .checked =
+        Boolean(
+          draft.favoritesOnly
+        );
+  }
+
+
+
+  /* ============================================================
+     LOCALIZAR A BUSCA EXISTENTE
+     ============================================================ */
+
+  function findSearch() {
+
+    const inputs = [
+
+      ...document.querySelectorAll(
+        'input'
+      )
+
+    ];
+
+
+    return (
+
+      inputs.find(
+        input => {
+
+          const hint =
+            txt(`
+
+              ${input.type}
+
+              ${input.placeholder}
+
+              ${input.getAttribute('aria-label')}
+
+              ${input.id}
+
+              ${input.className}
+
+            `);
+
+
+          return (
+
+            /search|buscar|pesquisar|simulado/
+              .test(
+                hint
+              )
+
+          );
+        }
+      )
+
+      ||
+
+      null
+
+    );
+  }
+
+
+
+  /* ============================================================
+     POSICIONAR PAINEL
+     ============================================================ */
+
+  function positionPanel() {
+
+    const panel =
+      document.getElementById(
+        PANEL_ID
+      );
+
+
     if (
-      !botao
+      !panel
     ) {
 
-      botao =
+      return;
+    }
+
+
+    const anchor =
+
+      searchInput
+
+      ||
+
+      document.getElementById(
+        TRIGGER_ID
+      );
+
+
+    if (
+      !anchor
+    ) {
+
+      return;
+    }
+
+
+    const rect =
+      anchor.getBoundingClientRect();
+
+
+    const width =
+      Math.min(
+        430,
+        innerWidth - 24
+      );
+
+
+    let left =
+      Math.max(
+
+        12,
+
+        Math.min(
+
+          rect.left,
+
+          innerWidth -
+          width -
+          12
+
+        )
+
+      );
+
+
+    panel.style.width =
+      width + 'px';
+
+
+    panel.style.left =
+      left + 'px';
+
+
+    panel.style.top =
+      (
+        rect.bottom +
+        8
+      ) +
+      'px';
+
+
+
+    requestAnimationFrame(
+      () => {
+
+        const p =
+          panel.getBoundingClientRect();
+
+
+        if (
+          p.bottom >
+          innerHeight - 12
+        ) {
+
+          const above =
+
+            rect.top -
+            p.height -
+            8;
+
+
+          panel.style.top =
+
+            (
+              above >= 12
+
+                ? above
+
+                : 12
+            )
+
+            +
+
+            'px';
+        }
+
+      }
+    );
+  }
+
+
+
+  /* ============================================================
+     ABRIR / FECHAR
+     ============================================================ */
+
+  function openPanel() {
+
+    const panel =
+      buildPanel();
+
+
+    draft = {
+      ...applied
+    };
+
+
+    syncPanel();
+
+
+    panel.dataset.open =
+      'true';
+
+
+    open =
+      true;
+
+
+    positionPanel();
+  }
+
+
+
+  function closePanel() {
+
+    const panel =
+      document.getElementById(
+        PANEL_ID
+      );
+
+
+    if (
+      panel
+    ) {
+
+      panel.dataset.open =
+        'false';
+    }
+
+
+    open =
+      false;
+  }
+
+
+
+  /* ============================================================
+     INTEGRAR À BUSCA
+     ============================================================ */
+
+  function ensureSearch() {
+
+    const found =
+      findSearch();
+
+
+    if (
+      found &&
+      searchInput !==
+        found
+    ) {
+
+      searchInput =
+        found;
+
+
+      /*
+       * Clicar ou focar a busca
+       * abre os filtros.
+       */
+
+      searchInput.addEventListener(
+
+        'focus',
+
+        openPanel
+
+      );
+
+
+      searchInput.addEventListener(
+
+        'click',
+
+        openPanel
+
+      );
+    }
+
+
+
+    let button =
+      document.getElementById(
+        TRIGGER_ID
+      );
+
+
+    if (
+      !button
+    ) {
+
+      button =
         document.createElement(
           'button'
         );
 
 
-      botao.type =
+      button.type =
         'button';
 
 
-      botao.className =
-        'medsim-favorite-toggle';
+      button.id =
+        TRIGGER_ID;
 
 
-      botao.textContent =
-        '★';
+      button.textContent =
+        'Filtros';
 
 
-      container.appendChild(
-        botao
-      );
-
-
-      botao.addEventListener(
-
-        'click',
-
-        function (event) {
-
-          /*
-           * Impede que clicar na estrela
-           * abra o simulado.
-           */
+      button.onclick =
+        event => {
 
           event.preventDefault();
 
           event.stopPropagation();
 
-          event.stopImmediatePropagation();
-
-
-          const chave =
-            botao.dataset
-              .favoriteKey;
-
 
           if (
-            !chave
+            open
           ) {
 
-            return;
-          }
-
-
-          if (
-            favoritos.has(
-              chave
-            )
-          ) {
-
-            favoritos.delete(
-              chave
-            );
+            closePanel();
 
           } else {
 
-            favoritos.add(
-              chave
-            );
+            openPanel();
           }
-
-
-          salvarFavoritos();
-
-          atualizarEstrelas();
-
-          aplicarFiltros();
-
-        },
-
-        true
-
-      );
+        };
     }
 
 
 
-    const chave =
-      chaveFavorito(
-        item.meta
-      );
-
-
-    botao.dataset.favoriteKey =
-      chave;
-
-
-    const ativo =
-      ehFavorito(
-        item.meta
-      );
-
-
-    botao.dataset.favorite =
-      String(
-        ativo
-      );
-
-
-    botao.title =
-      ativo
-        ? 'Remover dos favoritos'
-        : 'Adicionar aos favoritos';
-
-
-    botao.setAttribute(
-      'aria-label',
-      botao.title
-    );
-  }
-
-
-
-  function atualizarEstrelas() {
-
-    document
-      .querySelectorAll(
-        '.medsim-favorite-toggle'
-      )
-
-      .forEach(
-        botao => {
-
-          const chave =
-            botao.dataset
-              .favoriteKey;
-
-
-          const ativo =
-            Boolean(
-
-              chave &&
-              favoritos.has(
-                chave
-              )
-
-            );
-
-
-          botao.dataset.favorite =
-            String(
-              ativo
-            );
-
-
-          botao.title =
-            ativo
-              ? 'Remover dos favoritos'
-              : 'Adicionar aos favoritos';
-
-
-          botao.setAttribute(
-            'aria-label',
-            botao.title
-          );
-
-        }
-      );
-  }
-
-
-
-  /* ============================================================
-     CONCLUÍDO
-     ============================================================ */
-
-  function estaConcluido(
-    item,
-    concluidos
-  ) {
-
-    const candidatos = [
-
-      item.meta.arquivo,
-
-      item.meta.base,
-
-      normalizarTexto(
-        item.meta.titulo
-      ),
-
-      normalizarTexto(
-        item.container
-          .textContent
-      )
-
-    ].filter(
-      Boolean
-    );
-
-
-    return candidatos.some(
-      valor =>
-        concluidos.has(
-          valor
-        )
-    );
-  }
-
-
-
-  /* ============================================================
-     BUSCA
-     ============================================================ */
-
-  function correspondeBusca(
-    item
-  ) {
+    /*
+     * Se encontrou a busca,
+     * coloca o botão ao lado dela.
+     */
 
     if (
-      !buscaInput
+      searchInput &&
+      button.parentElement !==
+        searchInput.parentElement
     ) {
 
-      return true;
-    }
+      searchInput
+        .insertAdjacentElement(
 
+          'afterend',
 
-    const busca =
-      normalizarTexto(
-        buscaInput.value
-      );
+          button
 
-
-    if (
-      !busca
-    ) {
-
-      return true;
-    }
-
-
-    const texto =
-      normalizarTexto(`
-
-        ${item.meta.titulo}
-
-        ${item.meta.disciplina}
-
-        ${item.meta.ano}
-
-        ${item.meta.arquivo}
-
-        ${item.container.textContent || ''}
-
-      `);
-
-
-    return texto.includes(
-      busca
-    );
-  }
-
-
-
-  /* ============================================================
-     APLICAR FILTROS
-     ============================================================ */
-
-  function aplicarFiltros() {
-
-    if (
-      aplicando
-    ) {
-
-      return;
-    }
-
-
-    aplicando =
-      true;
-
-
-    try {
-
-      detectarBusca();
-
-
-      const concluidos =
-        carregarConcluidos();
-
-
-      const itens =
-        coletarItens();
-
-
-      if (
-        itens.length &&
-        !document.getElementById(
-          PANEL_ID
-        )
-      ) {
-
-        criarPainel(
-          itens
         );
-      }
+
+    }
+
+
+    /*
+     * Fallback:
+     * se não encontrar a busca,
+     * ainda assim mostra o botão.
+     */
+
+    else if (
+      !searchInput &&
+      !button.isConnected
+    ) {
+
+      const host =
+
+        document.querySelector(
+
+          'main, .main-content, .content, #main-content, #content'
+
+        )
+
+        ||
+
+        document.body;
+
+
+      host.insertBefore(
+
+        button,
+
+        host.firstChild
+
+      );
+    }
+
+
+    updateTrigger();
+  }
 
 
 
-      let visiveis =
-        0;
+  /* ============================================================
+     ATUALIZAÇÃO
+     ============================================================ */
+
+  function refresh() {
+
+    clearTimeout(
+      refreshTimer
+    );
 
 
+    refreshTimer =
+      setTimeout(
+        () => {
 
-      itens.forEach(
-        item => {
-
-          decorarFavorito(
-            item
-          );
-
-
-          const concluido =
-            estaConcluido(
-              item,
-              concluidos
-            );
+          favorites =
+            loadFavorites();
 
 
-          const favorito =
-            ehFavorito(
-              item.meta
-            );
+          ensureSearch();
 
+          populate();
 
-          const disciplinaOK =
-
-            !estado.disciplina
-
-            ||
-
-            item.meta.disciplina ===
-              estado.disciplina;
-
-
-
-          const anoOK =
-
-            !estado.ano
-
-            ||
-
-            item.meta.ano ===
-              estado.ano;
-
-
-
-          const statusOK =
-
-            !estado.status
-
-            ||
-
-            (
-              estado.status ===
-                'concluido'
-
-              &&
-
-              concluido
-            )
-
-            ||
-
-            (
-              estado.status ===
-                'pendente'
-
-              &&
-
-              !concluido
-            );
-
-
-
-          const favoritosOK =
-
-            !estado.somenteFavoritos
-
-            ||
-
-            favorito;
-
-
-
-          const buscaOK =
-            correspondeBusca(
-              item
-            );
-
-
-
-          const mostrar =
-
-            disciplinaOK &&
-
-            anoOK &&
-
-            statusOK &&
-
-            favoritosOK &&
-
-            buscaOK;
-
-
-
-          item.container
-            .classList
-            .toggle(
-
-              HIDDEN_CLASS,
-
-              !mostrar
-
-            );
+          applyFilters();
 
 
           if (
-            mostrar
+            open
           ) {
 
-            visiveis++;
+            positionPanel();
           }
 
-        }
+        },
+
+        60
       );
-
-
-
-      /* ========================================================
-         CONTADORES
-         ======================================================== */
-
-      const contador =
-        document.getElementById(
-          'medsim-filter-count'
-        );
-
-
-      const contadorFavoritos =
-        document.getElementById(
-          'medsim-filter-fav-count'
-        );
-
-
-      if (
-        contador
-      ) {
-
-        contador.textContent =
-
-          `${visiveis} ${
-            visiveis === 1
-              ? 'simulado'
-              : 'simulados'
-          }`;
-      }
-
-
-      if (
-        contadorFavoritos
-      ) {
-
-        contadorFavoritos.textContent =
-
-          `${favoritos.size} ${
-            favoritos.size === 1
-              ? 'favorito'
-              : 'favoritos'
-          }`;
-      }
-
-
-    } finally {
-
-      aplicando =
-        false;
-    }
   }
 
 
 
   /* ============================================================
-     AGENDAMENTO
+     OBSERVAR ALTERAÇÕES DO HUB
      ============================================================ */
 
-  let agendado =
-    false;
-
-
-  function agendarAplicacao() {
-
-    if (
-      agendado
-    ) {
-
-      return;
-    }
-
-
-    agendado =
-      true;
-
-
-    requestAnimationFrame(
-      function () {
-
-        agendado =
-          false;
-
-
-        aplicarFiltros();
-
-      }
-    );
-  }
-
-
-
-  /* ============================================================
-     OBSERVAR HUB
-
-     Caso o index regenere a lista de simulados.
-     ============================================================ */
-
-  function observarHub() {
+  function observe() {
 
     const observer =
       new MutationObserver(
-        function (mutations) {
+        mutations => {
 
-          const relevante =
+          const relevant =
             mutations.some(
-              mutation =>
+              mutation => {
 
-                [...mutation.addedNodes]
+                const target =
+
+                  mutation.target &&
+                  mutation.target.nodeType === 1
+
+                    ? mutation.target
+
+                    : mutation.target &&
+                      mutation.target.parentElement;
+
+
+                /*
+                 * Ignora alterações que o próprio
+                 * painel está fazendo.
+                 */
+
+                if (
+                  target &&
+                  (
+                    target.closest(
+                      '#' + PANEL_ID
+                    )
+
+                    ||
+
+                    target.closest(
+                      '.medsim-fav-star'
+                    )
+                  )
+                ) {
+
+                  return false;
+                }
+
+
+                return [
+
+                  ...mutation.addedNodes,
+
+                  ...mutation.removedNodes
+
+                ]
+
                   .some(
                     node => {
 
                       if (
-                        node.nodeType !==
-                        1
+                        !node ||
+                        node.nodeType !== 1
                       ) {
 
                         return false;
                       }
 
 
-                      return !node.closest?.(
-                        '#' + PANEL_ID
-                      );
+                      if (
+                        node.id ===
+                          PANEL_ID
+
+                        ||
+
+                        node.id ===
+                          TRIGGER_ID
+                      ) {
+
+                        return false;
+                      }
+
+
+                      if (
+                        node.classList &&
+                        node.classList.contains(
+                          'medsim-fav-star'
+                        )
+                      ) {
+
+                        return false;
+                      }
+
+
+                      return true;
                     }
-                  )
+                  );
+              }
             );
 
 
           if (
-            relevante
+            relevant
           ) {
 
-            agendarAplicacao();
+            refresh();
           }
 
         }
@@ -3512,60 +3597,126 @@
 
 
   /* ============================================================
+     NAVEGAÇÃO HUB / SIMULADO
+     ============================================================ */
+
+  function hookNav() {
+
+    const carregar =
+      window.carregarSimulado;
+
+
+    if (
+      typeof carregar ===
+        'function' &&
+
+      !carregar.__filterV2
+    ) {
+
+      const wrapper =
+        function () {
+
+          closePanel();
+
+
+          return carregar.apply(
+            this,
+            arguments
+          );
+        };
+
+
+      wrapper.__filterV2 =
+        true;
+
+
+      window.carregarSimulado =
+        wrapper;
+    }
+
+
+
+    const fechar =
+      window.fecharProva;
+
+
+    if (
+      typeof fechar ===
+        'function' &&
+
+      !fechar.__filterV2
+    ) {
+
+      const wrapper =
+        function () {
+
+          const result =
+            fechar.apply(
+              this,
+              arguments
+            );
+
+
+          setTimeout(
+            refresh,
+            50
+          );
+
+
+          return result;
+        };
+
+
+      wrapper.__filterV2 =
+        true;
+
+
+      window.fecharProva =
+        wrapper;
+    }
+  }
+
+
+
+  /* ============================================================
      INICIALIZAÇÃO
      ============================================================ */
 
-  async function iniciar() {
+  async function start() {
 
-    garantirCSS();
+    ensureStyle();
 
-
-    /*
-     * Lê simulados.json.
-     */
-
-    await carregarManifesto();
+    buildPanel();
 
 
-    detectarBusca();
+    await loadManifest();
 
 
-    aplicarFiltros();
+    ensureSearch();
+
+    populate();
+
+    applyFilters();
+
+    observe();
+
+    hookNav();
 
 
-    observarHub();
 
-
-
-    /* --------------------------------------------------------
-       OUTRA ABA ALTEROU DADOS
-       -------------------------------------------------------- */
+    /* Reposiciona se a tela mudar */
 
     window.addEventListener(
 
-      'storage',
+      'resize',
 
-      function (event) {
-
-        if (
-          event.key ===
-          FAVORITES_KEY
-        ) {
-
-          favoritos =
-            carregarFavoritos();
-
-
-          agendarAplicacao();
-        }
-
+      () => {
 
         if (
-          event.key ===
-          COMPLETED_KEY
+          open
         ) {
 
-          agendarAplicacao();
+          positionPanel();
         }
 
       }
@@ -3574,67 +3725,158 @@
 
 
 
-    /* --------------------------------------------------------
-       VOLTOU PARA A ABA
-       -------------------------------------------------------- */
-
     window.addEventListener(
 
-      'focus',
+      'scroll',
 
-      agendarAplicacao
-
-    );
-
-
-
-    document.addEventListener(
-
-      'visibilitychange',
-
-      function () {
+      () => {
 
         if (
-          !document.hidden
+          open
         ) {
 
-          agendarAplicacao();
-        }
-
-      }
-
-    );
-
-
-
-    /*
-     * O evento "storage" não dispara quando
-     * localStorage muda na MESMA aba.
-     *
-     * Por isso verificamos discretamente a
-     * cada 2 segundos.
-     */
-
-    setInterval(
-
-      function () {
-
-        if (
-          !document.hidden
-        ) {
-
-          agendarAplicacao();
+          positionPanel();
         }
 
       },
 
-      2000
+      true
+
+    );
+
+
+
+    /*
+     * ESC fecha sem aplicar.
+     */
+
+    document.addEventListener(
+
+      'keydown',
+
+      event => {
+
+        if (
+          event.key ===
+            'Escape'
+        ) {
+
+          closePanel();
+        }
+
+      }
+
+    );
+
+
+
+    /*
+     * Clique fora fecha sem aplicar.
+     */
+
+    document.addEventListener(
+
+      'pointerdown',
+
+      event => {
+
+        if (
+          !open
+        ) {
+
+          return;
+        }
+
+
+        const panel =
+          document.getElementById(
+            PANEL_ID
+          );
+
+
+        const button =
+          document.getElementById(
+            TRIGGER_ID
+          );
+
+
+        if (
+          panel &&
+          panel.contains(
+            event.target
+          )
+        ) {
+
+          return;
+        }
+
+
+        if (
+          button &&
+          button.contains(
+            event.target
+          )
+        ) {
+
+          return;
+        }
+
+
+        if (
+          searchInput &&
+          searchInput.contains(
+            event.target
+          )
+        ) {
+
+          return;
+        }
+
+
+        closePanel();
+
+      },
+
+      true
+
+    );
+
+
+
+    /*
+     * Algumas páginas constroem
+     * a busca/lista depois.
+     */
+
+    setTimeout(
+      refresh,
+      250
+    );
+
+
+    setTimeout(
+      refresh,
+      900
+    );
+
+
+    setTimeout(
+
+      () => {
+
+        hookNav();
+
+        refresh();
+
+      },
+
+      1800
 
     );
 
 
     console.info(
-      '[MedSim] Filtros do Hub ativos.'
+      '[MedSim] Filtros do Hub v2 ativos.'
     );
   }
 
@@ -3649,7 +3891,7 @@
 
       'DOMContentLoaded',
 
-      iniciar,
+      start,
 
       {
         once:
@@ -3660,7 +3902,7 @@
 
   } else {
 
-    iniciar();
+    start();
   }
 
 })();
