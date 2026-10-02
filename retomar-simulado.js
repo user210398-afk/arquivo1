@@ -1,58 +1,56 @@
 (function () {
   'use strict';
 
-  const VERSION = 1;
+  /* ============================================================
+     MEDSIM — RETOMAR SIMULADO v2 SAFE
 
-  const PREFIX =
+     Esta versão foi desenhada para NÃO interferir no Hub.
+
+     - Não altera .nav-menu
+     - Não altera .sidebar
+     - Não substitui carregarSimulado()
+     - Não interfere com Backup
+     - Não interfere com Desempenho
+     - Não injeta CSS nos simulados
+     - Não modifica HTMLs individuais
+
+     O progresso fica em:
+     medsim_resume_v2
+
+     Portanto ele também entra automaticamente no backup,
+     pois começa com "medsim_".
+     ============================================================ */
+
+
+  const STORE_KEY =
+    'medsim_resume_v2';
+
+  const LEGACY_PREFIX =
     'medsim_resume_v1:';
 
   const BUTTON_ID =
-    'medsim-resume-button';
+    'medsim-resume-safe-button';
 
   const MODAL_ID =
-    'medsim-resume-modal';
+    'medsim-resume-safe-modal';
 
   const STYLE_ID =
-    'medsim-resume-style';
+    'medsim-resume-safe-style';
 
 
-  let pendingOpen = null;
+  let active =
+    null;
 
-  let bypassOpen = null;
 
-  let active = null;
-
+  let pendingRestore =
+    null;
 
 
   /* ============================================================
      UTILIDADES
      ============================================================ */
 
-  const normText =
-    value =>
-      String(value || '')
-
-        .normalize('NFD')
-
-        .replace(
-          /[\u0300-\u036f]/g,
-          ''
-        )
-
-        .toLowerCase()
-
-        .replace(
-          /\s+/g,
-          ' '
-        )
-
-        .trim();
-
-
-
-  function normPath(
-    value
-  ) {
+  function normalizePath(value) {
 
     if (!value) {
       return '';
@@ -84,9 +82,7 @@
 
       return String(value)
 
-        .split(
-          /[?#]/
-        )[0]
+        .split(/[?#]/)[0]
 
         .replace(
           /\\/g,
@@ -108,27 +104,23 @@
   }
 
 
+  function fileName(path) {
 
-  function displayName(
-    path
-  ) {
-
-    const base =
-
-      String(
-        path || ''
-      )
-
+    return (
+      String(path || '')
         .split('/')
-
         .pop()
 
       ||
 
-      'Simulado';
+      'Simulado'
+    );
+  }
 
 
-    return base
+  function displayName(path) {
+
+    return fileName(path)
 
       .replace(
         /\.html?$/i,
@@ -149,104 +141,80 @@
   }
 
 
+  function normalizeText(value) {
 
-  function subjectFrom(
-    path
-  ) {
+    return String(
+      value || ''
+    )
+
+      .normalize('NFD')
+
+      .replace(
+        /[\u0300-\u036f]/g,
+        ''
+      )
+
+      .toLowerCase()
+
+      .replace(
+        /\s+/g,
+        ' '
+      )
+
+      .trim();
+  }
+
+
+  function subjectFrom(path) {
 
     const text =
-      normText(
-        path
-      );
+      normalizeText(path);
 
 
-    if (
-      /farmaco/.test(
-        text
-      )
-    ) {
-
+    if (/farmaco/.test(text)) {
       return 'Farmacologia';
     }
 
 
     if (
       /fisiologia|endocrino|hipofise|pancreatic/
-        .test(
-          text
-        )
+        .test(text)
     ) {
-
       return 'Fisiologia';
     }
 
 
-    if (
-      /imuno/.test(
-        text
-      )
-    ) {
-
+    if (/imuno/.test(text)) {
       return 'Imunologia';
     }
 
 
-    if (
-      /micro/.test(
-        text
-      )
-    ) {
-
+    if (/micro/.test(text)) {
       return 'Microbiologia';
     }
 
 
-    if (
-      /parasito/.test(
-        text
-      )
-    ) {
-
+    if (/parasito/.test(text)) {
       return 'Parasitologia';
     }
 
 
-    if (
-      /patologia/.test(
-        text
-      )
-    ) {
-
+    if (/patologia/.test(text)) {
       return 'Patologia';
     }
 
 
-    if (
-      /propedeu/.test(
-        text
-      )
-    ) {
-
+    if (/propedeu/.test(text)) {
       return 'Propedêutica';
     }
 
 
-    if (
-      /psico/.test(
-        text
-      )
-    ) {
-
+    if (/psico/.test(text)) {
       return 'Psicomed';
     }
 
 
-    if (
-      /vigil/.test(
-        text
-      )
-    ) {
-
+    if (/vigil/.test(text)) {
       return 'Vigilância em Saúde';
     }
 
@@ -255,117 +223,189 @@
   }
 
 
+  function formatDate(iso) {
 
-  /* ============================================================
-     LOCALSTORAGE
-     ============================================================ */
+    if (!iso) {
+      return '';
+    }
 
-  function recordKey(
-    path
-  ) {
 
-    return (
-      PREFIX +
-      normPath(path)
+    const date =
+      new Date(iso);
+
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return '';
+    }
+
+
+    return date.toLocaleString(
+      'pt-BR',
+      {
+        dateStyle:
+          'short',
+
+        timeStyle:
+          'short'
+      }
     );
   }
 
 
+  /* ============================================================
+     BANCO LOCAL
+     ============================================================ */
 
-  function loadRecord(
-    path
-  ) {
+  function loadStore() {
 
     try {
 
       const raw =
-        localStorage.getItem(
-          recordKey(path)
-        );
-
-
-      if (!raw) {
-        return null;
-      }
-
-
-      const data =
         JSON.parse(
-          raw
+          localStorage.getItem(
+            STORE_KEY
+          ) || '{}'
         );
 
 
       return (
-        data &&
-        data.path
+        raw &&
+        typeof raw === 'object' &&
+        !Array.isArray(raw)
 
-          ? data
+          ? raw
 
-          : null
+          : {}
       );
 
 
     } catch (_) {
 
-      return null;
+      return {};
     }
   }
 
 
-
-  function saveRecord(
-    record
-  ) {
+  function saveStore(store) {
 
     try {
 
       localStorage.setItem(
-
-        recordKey(
-          record.path
-        ),
-
-        JSON.stringify(
-          record
-        )
-
+        STORE_KEY,
+        JSON.stringify(store)
       );
-
-
-      updateHubUI();
-
 
     } catch (error) {
 
       console.warn(
-
-        '[MedSim] Não foi possível salvar o progresso universal.',
-
+        '[MedSim] Não foi possível salvar a retomada.',
         error
-
       );
     }
+
+
+    updateButton();
   }
 
 
+  function getRecord(path) {
 
-  function removeRecord(
-    path
-  ) {
+    const store =
+      loadStore();
 
-    localStorage.removeItem(
-      recordKey(path)
+
+    return (
+      store[
+        normalizePath(path)
+      ]
+
+      ||
+
+      null
     );
-
-
-    updateHubUI();
   }
 
+
+  function setRecord(record) {
+
+    const store =
+      loadStore();
+
+
+    store[
+      normalizePath(
+        record.path
+      )
+    ] =
+      record;
+
+
+    saveStore(store);
+  }
+
+
+  function removeRecord(path) {
+
+    const store =
+      loadStore();
+
+
+    delete store[
+      normalizePath(path)
+    ];
+
+
+    saveStore(store);
+  }
 
 
   function allRecords() {
 
-    const result =
+    return Object
+      .values(
+        loadStore()
+      )
+
+      .filter(
+        record =>
+          record &&
+          record.path
+      )
+
+      .sort(
+        (a, b) =>
+
+          String(
+            b.updatedAt || ''
+          )
+          .localeCompare(
+            String(
+              a.updatedAt || ''
+            )
+          )
+      );
+  }
+
+
+  /* ============================================================
+     MIGRAR DADOS DA V1
+
+     Caso a versão anterior tenha criado algum registro,
+     aproveitamos o progresso e apagamos apenas as chaves
+     antigas da própria função de retomada.
+     ============================================================ */
+
+  function migrateLegacy() {
+
+    const store =
+      loadStore();
+
+
+    const oldKeys =
       [];
 
 
@@ -376,451 +416,202 @@
     ) {
 
       const key =
-        localStorage.key(
-          i
-        );
+        localStorage.key(i);
 
 
       if (
-        !key ||
-        !key.startsWith(
-          PREFIX
+        key &&
+        key.startsWith(
+          LEGACY_PREFIX
         )
       ) {
 
-        continue;
+        oldKeys.push(key);
       }
+    }
 
+
+    oldKeys.forEach(key => {
 
       try {
 
-        const item =
+        const record =
           JSON.parse(
-
             localStorage.getItem(
               key
             )
-
           );
 
 
         if (
-          item &&
-          item.path
+          record &&
+          record.path
         ) {
 
-          result.push(
-            item
-          );
+          store[
+            normalizePath(
+              record.path
+            )
+          ] =
+            record;
         }
 
 
       } catch (_) {}
-    }
 
 
-    return result.sort(
+      localStorage.removeItem(key);
+    });
 
-      (a, b) =>
 
-        String(
-          b.updatedAt || ''
-        )
+    saveStore(store);
+  }
 
-          .localeCompare(
 
-            String(
-              a.updatedAt || ''
-            )
+  /* ============================================================
+     DETECTAR SIMULADO ABERTO
+     ============================================================ */
 
-          )
+  function framePath(frame) {
+
+    return normalizePath(
+
+      frame.getAttribute(
+        'src'
+      )
+
+      ||
+
+      ''
 
     );
   }
 
 
-
-  /* ============================================================
-     VISIBILIDADE
-     ============================================================ */
-
-  function visible(
-    element
-  ) {
-
-    if (
-      !element ||
-      !(element instanceof Element)
-    ) {
-
-      return false;
-    }
-
-
-    const style =
-
-      element.ownerDocument
-        .defaultView
-        .getComputedStyle(
-          element
-        );
-
-
-    if (
-      style.display ===
-        'none'
-
-      ||
-
-      style.visibility ===
-        'hidden'
-
-      ||
-
-      Number(
-        style.opacity
-      ) ===
-        0
-    ) {
-
-      return false;
-    }
-
-
-    const rect =
-      element.getBoundingClientRect();
-
+  function isSimulationPath(path) {
 
     return (
 
-      rect.width > 0 &&
-      rect.height > 0
+      /\.html?$/i.test(path)
+
+      &&
+
+      !/index\.html?$/i.test(path)
 
     );
   }
 
 
+  function isFrameVisible(frame) {
 
-  /* ============================================================
-     QUESTÕES
-     ============================================================ */
+    try {
 
-  function questionElements(
-    doc
-  ) {
-
-    const selectors = [
-
-      '[data-question]',
-
-      '[data-questao]',
-
-      '.question-card',
-
-      '.question-container',
-
-      '.question',
-
-      '.questao',
-
-      '.pergunta',
-
-      '[id^="question"]',
-
-      '[id^="questao"]'
-
-    ];
-
-
-    let best =
-      [];
-
-
-    for (
-      const selector
-      of selectors
-    ) {
-
-      const list = [
-
-        ...doc.querySelectorAll(
-          selector
-        )
-
-      ].filter(
-        element => {
-
-          const text =
-            normText(
-              element.textContent
-            );
-
-
-          return (
-
-            text.length >
-              10
-
-            &&
-
-            !/voltar ao hub/
-              .test(
-                text
-              )
-
-          );
-        }
-      );
+      const style =
+        getComputedStyle(frame);
 
 
       if (
-        list.length >
-          best.length
-
-        &&
-
-        list.length <=
-          250
+        style.display === 'none' ||
+        style.visibility === 'hidden'
       ) {
 
-        best =
-          list;
+        return false;
       }
+
+
+      const rect =
+        frame.getBoundingClientRect();
+
+
+      return (
+        rect.width > 0 &&
+        rect.height > 0
+      );
+
+
+    } catch (_) {
+
+      return false;
     }
-
-
-    return best;
   }
 
 
+  function simulationOpen() {
 
-  function currentQuestionInfo(
-    doc
-  ) {
+    return [
 
-    const all =
-      questionElements(
-        doc
+      ...document.querySelectorAll(
+        'iframe'
+      )
+
+    ].some(frame => {
+
+      const path =
+        framePath(frame);
+
+
+      return (
+        isSimulationPath(path) &&
+        isFrameVisible(frame)
       );
-
-
-    /*
-     * Fallback para simuladores
-     * sem containers de questão claros.
-     */
-
-    if (
-      !all.length
-    ) {
-
-      const body =
-        normText(
-
-          doc.body &&
-          doc.body.innerText
-
-        );
-
-
-      const match =
-        body.match(
-
-          /questao\s*(\d+)\s*(?:de|\/)?\s*(\d+)?/i
-
-        );
-
-
-      return {
-
-        index:
-
-          match
-
-            ? Math.max(
-                0,
-                Number(
-                  match[1]
-                ) - 1
-              )
-
-            : 0,
-
-
-        number:
-
-          match
-            ? Number(
-                match[1]
-              )
-            : null,
-
-
-        total:
-
-          match &&
-          match[2]
-
-            ? Number(
-                match[2]
-              )
-
-            : null,
-
-
-        label:
-
-          match
-
-            ? (
-                `Questão ${match[1]}`
-
-                +
-
-                (
-                  match[2]
-
-                    ? ` de ${match[2]}`
-
-                    : ''
-                )
-              )
-
-            : 'Progresso salvo'
-
-      };
-    }
-
-
-
-    const visibleQuestions =
-      all.filter(
-        visible
-      );
-
-
-    let current =
-      null;
-
-
-
-    if (
-      visibleQuestions.length ===
-      1
-    ) {
-
-      current =
-        visibleQuestions[0];
-
-
-    } else if (
-      visibleQuestions.length >
-      1
-    ) {
-
-      current =
-
-        visibleQuestions
-
-          .map(
-            element => ({
-
-              element,
-
-              distance:
-
-                Math.abs(
-
-                  element
-                    .getBoundingClientRect()
-                    .top
-
-                  -
-
-                  90
-
-                )
-
-            })
-          )
-
-          .sort(
-            (a, b) =>
-
-              a.distance -
-              b.distance
-
-          )[0]
-          .element;
-
-
-    } else {
-
-      current =
-        all[0];
-    }
-
-
-
-    const index =
-      Math.max(
-
-        0,
-
-        all.indexOf(
-          current
-        )
-
-      );
-
-
-    const text =
-      normText(
-        current.textContent
-      );
-
-
-    const match =
-      text.match(
-        /questao\s*(\d+)/i
-      );
-
-
-    const number =
-
-      match
-
-        ? Number(
-            match[1]
-          )
-
-        : index + 1;
-
-
-    return {
-
-      index,
-
-      number,
-
-      total:
-        all.length,
-
-      label:
-
-        `Questão ${number} de ${all.length}`
-
-    };
+    });
   }
-
 
 
   /* ============================================================
-     CAMPOS / RESPOSTAS
+     DETECTAR QUESTÃO ATUAL
+
+     Só para mostrar informação ao usuário.
+
+     Não altera o simulado.
      ============================================================ */
 
-  function fieldState(
-    doc
-  ) {
+  function questionLabel(doc) {
+
+    try {
+
+      const text =
+        doc.body
+          ? doc.body.innerText
+          : '';
+
+
+      const match =
+        text.match(
+
+          /quest(?:ão|ao)\s*(\d+)(?:\s*(?:de|\/)\s*(\d+))?/i
+
+        );
+
+
+      if (match) {
+
+        return (
+          `Questão ${match[1]}`
+
+          +
+
+          (
+            match[2]
+              ? ` de ${match[2]}`
+              : ''
+          )
+        );
+      }
+
+
+    } catch (_) {}
+
+
+    return 'Progresso salvo';
+  }
+
+
+  /* ============================================================
+     CAMPOS DO SIMULADO
+     ============================================================ */
+
+  function captureFields(doc) {
 
     const fields = [
 
@@ -828,35 +619,28 @@
         'input, textarea, select'
       )
 
-    ].filter(
-      element =>
+    ].filter(element => {
 
-        ![
+      const type =
+        (
+          element.type ||
+          ''
+        ).toLowerCase();
 
-          'button',
-          'submit',
-          'reset',
-          'file',
-          'password'
 
-        ].includes(
-
-          (
-            element.type ||
-            ''
-          ).toLowerCase()
-
-        )
-
-    );
+      return ![
+        'button',
+        'submit',
+        'reset',
+        'file',
+        'password',
+        'hidden'
+      ].includes(type);
+    });
 
 
     return fields.map(
-
-      (
-        element,
-        index
-      ) => {
+      (element, index) => {
 
         let nameIndex =
           -1;
@@ -876,9 +660,7 @@
 
 
           nameIndex =
-            same.indexOf(
-              element
-            );
+            same.indexOf(element);
         }
 
 
@@ -894,11 +676,7 @@
 
           nameIndex,
 
-          tag:
-            element.tagName,
-
           type:
-
             (
               element.type ||
               ''
@@ -918,57 +696,219 @@
               : null
 
         };
-
       }
-
     );
   }
 
 
+  function findField(
+    doc,
+    saved
+  ) {
+
+    if (
+      saved.id
+    ) {
+
+      const byId =
+        doc.getElementById(
+          saved.id
+        );
+
+
+      if (byId) {
+        return byId;
+      }
+    }
+
+
+    if (
+      saved.name
+    ) {
+
+      const same = [
+
+        ...doc.getElementsByName(
+          saved.name
+        )
+
+      ];
+
+
+      if (
+        saved.nameIndex >= 0 &&
+        same[
+          saved.nameIndex
+        ]
+      ) {
+
+        return same[
+          saved.nameIndex
+        ];
+      }
+
+
+      if (same[0]) {
+        return same[0];
+      }
+    }
+
+
+    const fields = [
+
+      ...doc.querySelectorAll(
+        'input, textarea, select'
+      )
+
+    ].filter(element => {
+
+      const type =
+        (
+          element.type ||
+          ''
+        ).toLowerCase();
+
+
+      return ![
+        'button',
+        'submit',
+        'reset',
+        'file',
+        'password',
+        'hidden'
+      ].includes(type);
+    });
+
+
+    return (
+      fields[
+        saved.index
+      ]
+
+      ||
+
+      null
+    );
+  }
+
+
+  function restoreFields(
+    doc,
+    record
+  ) {
+
+    (
+      record.fields ||
+      []
+    ).forEach(saved => {
+
+      const element =
+        findField(
+          doc,
+          saved
+        );
+
+
+      if (!element) {
+        return;
+      }
+
+
+      try {
+
+        if (
+          saved.checked !== null &&
+          'checked' in element
+        ) {
+
+          element.checked =
+            saved.checked;
+        }
+
+
+        if (
+          saved.value !== undefined &&
+          saved.type !== 'radio' &&
+          saved.type !== 'checkbox'
+        ) {
+
+          element.value =
+            saved.value;
+        }
+
+
+        /*
+         * Alguns simulados atualizam seu estado
+         * quando recebem input/change.
+         */
+
+        element.dispatchEvent(
+
+          new Event(
+            'input',
+            {
+              bubbles:
+                true
+            }
+          )
+
+        );
+
+
+        element.dispatchEvent(
+
+          new Event(
+            'change',
+            {
+              bubbles:
+                true
+            }
+          )
+
+        );
+
+
+      } catch (_) {}
+    });
+  }
+
 
   /* ============================================================
-     HISTÓRICO NATIVO
+     DESCOBRIR HISTÓRICO NATIVO
+
+     Se o histórico mudar, consideramos que a tentativa
+     terminou e retiramos "Retomar simulado".
      ============================================================ */
 
-  function discoverHistoryKey(
-    doc
-  ) {
+  function discoverHistoryKey(doc) {
 
     try {
 
-      const text =
+      const scripts = [
 
-        [
-          ...doc.scripts
-        ]
+        ...doc.scripts
 
-          .map(
-            script =>
-              script.textContent ||
-              ''
-          )
-
-          .join(
-            '\n'
-          );
+      ]
+      .map(
+        script =>
+          script.textContent ||
+          ''
+      )
+      .join('\n');
 
 
-      const matches =
+      const match =
+        scripts.match(
 
-        text.match(
+          /simulado_[a-z0-9_-]+_history/i
 
-          /simulado_[a-z0-9_\-]+_history/ig
-
-        )
-
-        ||
-
-        [];
+        );
 
 
       return (
-        matches[0] ||
-        ''
+        match
+          ? match[0]
+          : ''
       );
 
 
@@ -979,32 +919,9 @@
   }
 
 
-
   /* ============================================================
-     SALVAR PROGRESSO
+     CAPTURAR PROGRESSO
      ============================================================ */
-
-  function hashRecord(
-    record
-  ) {
-
-    return JSON.stringify({
-
-      question:
-
-        record.question &&
-        record.question.index,
-
-      scroll:
-        record.scrollY,
-
-      fields:
-        record.fields
-
-    });
-  }
-
-
 
   function captureActive(
     force
@@ -1014,6 +931,15 @@
       !active ||
       !active.frame ||
       !active.path
+    ) {
+
+      return;
+    }
+
+
+    if (
+      !active.dirty &&
+      !force
     ) {
 
       return;
@@ -1044,23 +970,17 @@
     }
 
 
-    const question =
-      currentQuestionInfo(
-        doc
-      );
-
-
     const record = {
 
       version:
-        VERSION,
+        2,
 
       path:
         active.path,
 
       title:
 
-        active.title ||
+        doc.title ||
 
         displayName(
           active.path
@@ -1072,12 +992,12 @@
           active.path
         ),
 
-      updatedAt:
+      question:
+        questionLabel(doc),
 
+      updatedAt:
         new Date()
           .toISOString(),
-
-      question,
 
       scrollY:
 
@@ -1094,476 +1014,56 @@
         ),
 
       fields:
-
-        fieldState(
-          doc
-        ),
-
-      historyKey:
-
-        active.historyKey ||
-        '',
-
-      nativeStateDetected:
-
-        Boolean(
-          active.nativeStateDetected
-        )
+        captureFields(doc)
 
     };
 
 
-    const hash =
-      hashRecord(
-        record
-      );
+    setRecord(record);
 
 
-    if (
-      !force &&
-      hash ===
-        active.lastHash
-    ) {
+    active.dirty =
+      false;
+  }
 
+
+  function scheduleCapture() {
+
+    if (!active) {
       return;
     }
 
 
-    active.lastHash =
-      hash;
+    active.dirty =
+      true;
 
 
-    saveRecord(
-      record
-    );
-  }
-
-
-
-  /* ============================================================
-     RESTAURAÇÃO DE CAMPOS
-     ============================================================ */
-
-  function findField(
-    doc,
-    saved
-  ) {
-
-    if (
-      saved.id
-    ) {
-
-      const byId =
-        doc.getElementById(
-          saved.id
-        );
-
-
-      if (
-        byId
-      ) {
-
-        return byId;
-      }
-    }
-
-
-
-    if (
-      saved.name
-    ) {
-
-      const same = [
-
-        ...doc.getElementsByName(
-          saved.name
-        )
-
-      ];
-
-
-      if (
-        saved.nameIndex >=
-          0
-
-        &&
-
-        same[
-          saved.nameIndex
-        ]
-      ) {
-
-        return same[
-          saved.nameIndex
-        ];
-      }
-
-
-      if (
-        same[0]
-      ) {
-
-        return same[0];
-      }
-    }
-
-
-
-    const all = [
-
-      ...doc.querySelectorAll(
-        'input, textarea, select'
-      )
-
-    ].filter(
-      element =>
-
-        ![
-
-          'button',
-          'submit',
-          'reset',
-          'file',
-          'password'
-
-        ].includes(
-
-          (
-            element.type ||
-            ''
-          ).toLowerCase()
-
-        )
-
+    clearTimeout(
+      active.timer
     );
 
 
-    return (
-      all[
-        saved.index
-      ]
-
-      ||
-
-      null
-    );
-  }
-
-
-
-  function restoreFields(
-    doc,
-    record
-  ) {
-
-    (
-      record.fields ||
-      []
-    ).forEach(
-      saved => {
-
-        const element =
-          findField(
-            doc,
-            saved
-          );
-
-
-        if (
-          !element
-        ) {
-
-          return;
-        }
-
-
-        try {
-
-          if (
-            saved.checked !==
-              null
-
-            &&
-
-            'checked' in element
-          ) {
-
-            element.checked =
-              saved.checked;
-          }
-
-
-          if (
-            saved.value !==
-              undefined
-
-            &&
-
-            element.type !==
-              'radio'
-
-            &&
-
-            element.type !==
-              'checkbox'
-          ) {
-
-            element.value =
-              saved.value;
-          }
-
-
-        } catch (_) {}
-
-      }
-    );
-  }
-
-
-
-  /* ============================================================
-     NAVEGAÇÃO ENTRE QUESTÕES
-     ============================================================ */
-
-  function findNavButton(
-    doc,
-    direction
-  ) {
-
-    const nodes = [
-
-      ...doc.querySelectorAll(
-        'button, a, [role="button"]'
-      )
-
-    ].filter(
-      visible
-    );
-
-
-    const wanted =
-
-      direction ===
-        'next'
-
-        ? /^(proxima|proximo|avancar|seguinte|next)\b/
-
-        : /^(anterior|questao anterior|prev|previous)\b/;
-
-
-    return (
-
-      nodes.find(
-        element =>
-
-          wanted.test(
-
-            normText(
-
-              element.textContent
-
-              ||
-
-              element.getAttribute(
-                'aria-label'
-              )
-
-            )
-
-          )
-      )
-
-      ||
-
-      null
-
-    );
-  }
-
-
-
-  async function restorePosition(
-    doc,
-    record
-  ) {
-
-    const savedIndex =
-
-      record.question &&
-
-      Number.isFinite(
-        record.question.index
-      )
-
-        ? record.question.index
-
-        : null;
-
-
-    const all =
-      questionElements(
-        doc
+    active.timer =
+      setTimeout(
+        () =>
+          captureActive(false),
+        250
       );
-
-
-    if (
-
-      savedIndex !==
-        null
-
-      &&
-
-      all.length
-
-      &&
-
-      savedIndex <
-        all.length
-
-    ) {
-
-      const visibleNow =
-        all.filter(
-          visible
-        );
-
-
-      /*
-       * Simulado com várias questões
-       * na mesma página.
-       */
-
-      if (
-        visibleNow.length >
-        1
-      ) {
-
-        all[
-          savedIndex
-        ].scrollIntoView({
-
-          block:
-            'start'
-
-        });
-
-
-        return;
-      }
-
-
-
-      /*
-       * Simulado com uma questão
-       * por vez.
-       */
-
-      let current =
-
-        currentQuestionInfo(
-          doc
-        ).index;
-
-
-      let guard =
-        0;
-
-
-      while (
-
-        current !==
-          savedIndex
-
-        &&
-
-        guard++ <
-          100
-
-      ) {
-
-        const direction =
-
-          current <
-            savedIndex
-
-            ? 'next'
-
-            : 'prev';
-
-
-        const button =
-          findNavButton(
-            doc,
-            direction
-          );
-
-
-        if (
-          !button
-        ) {
-
-          break;
-        }
-
-
-        button.click();
-
-
-        await new Promise(
-
-          resolve =>
-            setTimeout(
-              resolve,
-              45
-            )
-
-        );
-
-
-        current =
-
-          currentQuestionInfo(
-            doc
-          ).index;
-      }
-
-
-      return;
-    }
-
-
-
-    /*
-     * Fallback:
-     * restaura posição da rolagem.
-     */
-
-    try {
-
-      doc.defaultView
-        .scrollTo({
-
-          top:
-            Number(
-              record.scrollY ||
-              0
-            ),
-
-          behavior:
-            'auto'
-
-        });
-
-    } catch (_) {}
   }
 
 
-
   /* ============================================================
-     RESTAURAR REGISTRO
+     RESTAURAR PROGRESSO
+
+     Conservador:
+     - deixa primeiro o simulador restaurar seu próprio estado
+     - complementa campos
+     - restaura posição da página
+
+     NÃO clica automaticamente em Próxima/Anterior.
      ============================================================ */
 
-  async function restoreRecord(
+  function restoreRecord(
     frame,
     record
   ) {
@@ -1591,87 +1091,72 @@
     }
 
 
+    const restore =
+      function () {
+
+        restoreFields(
+          doc,
+          record
+        );
+
+
+        try {
+
+          frame.contentWindow
+            .scrollTo({
+
+              top:
+                Number(
+                  record.scrollY ||
+                  0
+                ),
+
+              behavior:
+                'auto'
+
+            });
+
+        } catch (_) {}
+      };
+
+
     /*
-     * Deixa primeiro o próprio simulado
-     * restaurar seu estado nativo.
-     *
-     * Depois nossa camada complementa.
+     * Alguns simulados terminam de montar
+     * a interface depois do load.
      */
 
-    for (
-      const delay
-      of [
-        180,
-        550,
-        1100
-      ]
-    ) {
-
-      await new Promise(
-
-        resolve =>
-          setTimeout(
-            resolve,
-            delay
-          )
-
-      );
+    setTimeout(
+      restore,
+      250
+    );
 
 
-      restoreFields(
-        doc,
-        record
-      );
-    }
-
-
-    await restorePosition(
-      doc,
-      record
+    setTimeout(
+      restore,
+      800
     );
   }
 
 
-
   /* ============================================================
-     MONITORAMENTO
+     MONITORAR IFRAME
      ============================================================ */
 
-  function scheduleCapture() {
+  function setupFrame(
+    frame
+  ) {
+
+    const path =
+      framePath(frame);
+
 
     if (
-      !active
+      !isSimulationPath(path)
     ) {
 
       return;
     }
 
-
-    clearTimeout(
-      active.captureTimer
-    );
-
-
-    active.captureTimer =
-      setTimeout(
-
-        () =>
-          captureActive(
-            false
-          ),
-
-        180
-
-      );
-  }
-
-
-
-  function setupFrame(
-    frame,
-    path,
-    mode
-  ) {
 
     let doc;
 
@@ -1707,11 +1192,8 @@
     }
 
 
-
     const historyKey =
-      discoverHistoryKey(
-        doc
-      );
+      discoverHistoryKey(doc);
 
 
     const historyBefore =
@@ -1725,86 +1207,51 @@
         : null;
 
 
-
-    const scriptText =
-
-      [
-        ...doc.scripts
-      ]
-
-        .map(
-          script =>
-            script.textContent ||
-            ''
-        )
-
-        .join(
-          '\n'
-        );
-
-
-
-    const nativeStateDetected =
-
-      /simulado_[a-z0-9_\-]+_state/i
-        .test(
-          scriptText
-        );
-
-
-
     active = {
 
       frame,
 
       path,
 
-      title:
+      dirty:
+        false,
 
-        doc.title ||
-
-        displayName(
-          path
-        ),
-
-      historyKey,
-
-      historyBefore,
-
-      nativeStateDetected,
-
-      lastHash:
-        '',
-
-      captureTimer:
+      timer:
         null,
 
       interval:
-        null
+        null,
+
+      historyKey,
+
+      historyBefore
 
     };
 
 
-
-    const onChange =
-      () =>
-        scheduleCapture();
-
-
+    /* --------------------------------------------------------
+       INTERAÇÕES
+       -------------------------------------------------------- */
 
     doc.addEventListener(
       'input',
-      onChange,
+      scheduleCapture,
       true
     );
 
 
     doc.addEventListener(
       'change',
-      onChange,
+      scheduleCapture,
       true
     );
 
+
+    doc.addEventListener(
+      'keydown',
+      scheduleCapture,
+      true
+    );
 
 
     doc.addEventListener(
@@ -1814,51 +1261,54 @@
       event => {
 
         const control =
-
           event.target.closest
 
-          &&
+            ? event.target.closest(
+                'button, a, [role="button"], label, input'
+              )
 
-          event.target.closest(
-
-            'button, a, [role="button"]'
-
-          );
+            : null;
 
 
         const text =
-          normText(
+          normalizeText(
 
-            control &&
+            control
 
-            (
-              control.textContent
+              ? (
+                  control.textContent
 
-              ||
+                  ||
 
-              control.getAttribute(
-                'aria-label'
-              )
-            )
+                  control.getAttribute(
+                    'aria-label'
+                  )
+
+                  ||
+
+                  ''
+                )
+
+              : ''
 
           );
 
 
         /*
-         * Salva imediatamente
-         * antes de voltar ao Hub.
+         * Antes de sair para o Hub,
+         * garante o último salvamento.
          */
 
         if (
           /voltar ao hub/
-            .test(
-              text
-            )
+            .test(text)
         ) {
 
-          captureActive(
-            true
-          );
+          active.dirty =
+            true;
+
+
+          captureActive(true);
         }
 
 
@@ -1871,23 +1321,7 @@
     );
 
 
-
     try {
-
-      frame.contentWindow
-        .addEventListener(
-
-          'scroll',
-
-          scheduleCapture,
-
-          {
-            passive:
-              true
-          }
-
-        );
-
 
       frame.contentWindow
         .addEventListener(
@@ -1905,39 +1339,30 @@
     } catch (_) {}
 
 
-
-    /* ========================================================
-       VERIFICA CONCLUSÃO
-       ======================================================== */
+    /* --------------------------------------------------------
+       DETECTAR CONCLUSÃO
+       -------------------------------------------------------- */
 
     active.interval =
       setInterval(
-
-        () => {
+        function () {
 
           if (
             !active ||
-            active.frame !==
-              frame
+            active.frame !== frame
           ) {
 
             return;
           }
 
 
-          /*
-           * Se o histórico mudou,
-           * entendemos que uma tentativa
-           * foi concluída.
-           */
-
           if (
-            active.historyKey
+            historyKey
           ) {
 
             const now =
               localStorage.getItem(
-                active.historyKey
+                historyKey
               );
 
 
@@ -1946,17 +1371,15 @@
                 active.historyBefore
             ) {
 
-              removeRecord(
-                active.path
-              );
+              removeRecord(path);
 
 
               active.historyBefore =
                 now;
 
 
-              active.lastHash =
-                '';
+              active.dirty =
+                false;
 
 
               return;
@@ -1964,90 +1387,70 @@
           }
 
 
-          captureActive(
-            false
-          );
+          captureActive(false);
 
         },
-
-        1200
-
+        1500
       );
 
 
+    /* --------------------------------------------------------
+       RETOMADA SOLICITADA PELO HUB
+       -------------------------------------------------------- */
 
-    const saved =
-      loadRecord(
+    if (
+      pendingRestore ===
         path
-      );
+    ) {
+
+      const record =
+        getRecord(path);
+
+
+      pendingRestore =
+        null;
+
+
+      if (record) {
+
+        restoreRecord(
+          frame,
+          record
+        );
+      }
+
+
+      return;
+    }
+
+
+    /* --------------------------------------------------------
+       ABERTURA NORMAL COM PROGRESSO EXISTENTE
+       -------------------------------------------------------- */
+
+    const existing =
+      getRecord(path);
 
 
     if (
-      mode ===
-        'resume'
-
-      &&
-
-      saved
+      existing
     ) {
 
-      restoreRecord(
-        frame,
-        saved
-      )
-
-        .finally(
-          () =>
-            captureActive(
-              true
-            )
-        );
-
-
-    } else {
-
       /*
-       * Evita criar imediatamente
-       * um falso progresso antes de
-       * o simulado terminar de carregar.
+       * Espera o simulado aparecer antes
+       * de mostrar a escolha.
        */
 
       setTimeout(
-
         () =>
-          captureActive(
-            false
+          showOpenChoice(
+            existing,
+            frame
           ),
-
-        900
-
+        180
       );
     }
   }
-
-
-
-  /* ============================================================
-     IFRAMES
-     ============================================================ */
-
-  function framePath(
-    frame
-  ) {
-
-    return normPath(
-
-      frame.getAttribute(
-        'src'
-      )
-
-      ||
-
-      ''
-
-    );
-  }
-
 
 
   function registerFrame(
@@ -2056,7 +1459,7 @@
 
     if (
       frame.dataset
-        .medsimResumeV1 ===
+        .medsimResumeSafe ===
       '1'
     ) {
 
@@ -2065,103 +1468,37 @@
 
 
     frame.dataset
-      .medsimResumeV1 =
+      .medsimResumeSafe =
       '1';
 
 
-
     frame.addEventListener(
-
       'load',
+      function () {
 
-      () => {
+        setupFrame(frame);
 
-        const path =
-
-          (
-            pendingOpen &&
-            pendingOpen.path
-          )
-
-          ||
-
-          framePath(
-            frame
-          );
-
-
-        const mode =
-
-          pendingOpen &&
-          pendingOpen.path ===
-            path
-
-            ? pendingOpen.mode
-
-            : 'fresh';
-
-
-        pendingOpen =
-          null;
-
-
-        if (
-          /\.html?$/i.test(
-            path
-          )
-        ) {
-
-          setupFrame(
-            frame,
-            path,
-            mode
-          );
-        }
+        updateButton();
 
       }
-
     );
 
 
+    try {
 
-    const path =
-      framePath(
-        frame
-      );
+      if (
+        frame.contentDocument &&
+        frame.contentDocument
+          .readyState ===
+          'complete'
+      ) {
 
-
-    if (
-      /\.html?$/i.test(
-        path
-      )
-    ) {
-
-      try {
-
-        if (
-
-          frame.contentDocument
-
-          &&
-
-          frame.contentDocument
-            .readyState ===
-            'complete'
-
-        ) {
-
-          setupFrame(
-            frame,
-            path,
-            'fresh'
-          );
-        }
+        setupFrame(frame);
+      }
 
 
-      } catch (_) {}
-    }
+    } catch (_) {}
   }
-
 
 
   function scanFrames() {
@@ -2177,295 +1514,165 @@
   }
 
 
-
   /* ============================================================
-     CARREGARSIMULADO
+     ABRIR SIMULADO A PARTIR DA LISTA DE RETOMADA
      ============================================================ */
 
-  function extractPathFromArgs(
-    args
+  function findSimulationElement(
+    path
   ) {
 
-    for (
-      const arg
-      of args
+    const target =
+      normalizePath(path);
+
+
+    const base =
+      fileName(target);
+
+
+    const candidates = [
+
+      ...document.querySelectorAll(
+        'a, button, [onclick], [data-file], [data-src], [data-path], [data-simulado]'
+      )
+
+    ];
+
+
+    return candidates.find(element => {
+
+      const values = [
+
+        element.getAttribute(
+          'href'
+        ),
+
+        element.getAttribute(
+          'onclick'
+        ),
+
+        element.getAttribute(
+          'data-file'
+        ),
+
+        element.getAttribute(
+          'data-src'
+        ),
+
+        element.getAttribute(
+          'data-path'
+        ),
+
+        element.getAttribute(
+          'data-simulado'
+        )
+
+      ]
+
+      .filter(Boolean)
+
+      .join(' ')
+
+      .toLowerCase();
+
+
+      return (
+        values.includes(
+          target
+        )
+
+        ||
+
+        values.includes(
+          base
+        )
+      );
+    });
+  }
+
+
+  function openSimulation(
+    record
+  ) {
+
+    const path =
+      normalizePath(
+        record.path
+      );
+
+
+    pendingRestore =
+      path;
+
+
+    closeModal();
+
+
+    /*
+     * Primeiro tenta usar a função
+     * que o Hub já possui.
+     */
+
+    if (
+      typeof window
+        .carregarSimulado ===
+        'function'
     ) {
 
-      if (
+      try {
 
-        typeof arg ===
-          'string'
-
-        &&
-
-        /\.html?(?:[?#]|$)/i
-          .test(
-            arg
-          )
-
-      ) {
-
-        return normPath(
-          arg
+        window.carregarSimulado(
+          record.path
         );
-      }
+
+
+        return;
+
+
+      } catch (_) {}
     }
 
 
-    return '';
-  }
+    /*
+     * Fallback:
+     * clica no próprio card/link do Hub.
+     */
 
-
-
-  function invokeCurrentCarregar(
-    args,
-    path,
-    mode
-  ) {
-
-    bypassOpen = {
-
-      path,
-
-      mode
-
-    };
-
-
-    return window
-      .carregarSimulado
-      .apply(
-        window,
-        args
+    const element =
+      findSimulationElement(
+        path
       );
-  }
-
-
-
-  function hookCarregar() {
-
-    const current =
-      window.carregarSimulado;
 
 
     if (
-
-      typeof current !==
-        'function'
-
-      ||
-
-      current.__medsimResumeV1
-
+      element
     ) {
+
+      element.click();
 
       return;
     }
 
 
+    pendingRestore =
+      null;
 
-    function wrapped(
-      ...args
-    ) {
 
-      const path =
-        extractPathFromArgs(
-          args
-        );
+    alert(
 
-
-      if (
-        !path
-      ) {
-
-        return current.apply(
-          this,
-          args
-        );
-      }
-
-
-
-      /*
-       * Abertura autorizada pela
-       * janela de retomada.
-       */
-
-      if (
-
-        bypassOpen
-
-        &&
-
-        bypassOpen.path ===
-          path
-
-      ) {
-
-        const mode =
-          bypassOpen.mode;
-
-
-        bypassOpen =
-          null;
-
-
-        pendingOpen = {
-
-          path,
-
-          mode
-
-        };
-
-
-        return current.apply(
-          this,
-          args
-        );
-      }
-
-
-
-      const saved =
-        loadRecord(
-          path
-        );
-
-
-      /*
-       * Existe progresso:
-       * pergunta antes de abrir.
-       */
-
-      if (
-        saved
-      ) {
-
-        showResumeChoice(
-
-          saved,
-
-
-          () =>
-            invokeCurrentCarregar(
-
-              args,
-              path,
-              'resume'
-
-            ),
-
-
-          () => {
-
-            removeRecord(
-              path
-            );
-
-
-            invokeCurrentCarregar(
-
-              args,
-              path,
-              'fresh'
-
-            );
-
-          }
-
-        );
-
-
-        return;
-      }
-
-
-
-      pendingOpen = {
-
-        path,
-
-        mode:
-          'fresh'
-
-      };
-
-
-      return current.apply(
-        this,
-        args
-      );
-    }
-
-
-
-    wrapped.__medsimResumeV1 =
-      true;
-
-
-    window.carregarSimulado =
-      wrapped;
-  }
-
-
-
-  /* ============================================================
-     DATA
-     ============================================================ */
-
-  function formatDate(
-    iso
-  ) {
-
-    if (
-      !iso
-    ) {
-
-      return '';
-    }
-
-
-    const date =
-      new Date(
-        iso
-      );
-
-
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
-
-      return '';
-    }
-
-
-    return date.toLocaleString(
-
-      'pt-BR',
-
-      {
-
-        dateStyle:
-          'short',
-
-        timeStyle:
-          'short'
-
-      }
+      'Não foi possível localizar automaticamente este simulado no Hub.'
 
     );
   }
 
 
-
   /* ============================================================
-     CSS
+     CSS ISOLADO
+
+     Nenhum seletor genérico do Hub.
      ============================================================ */
 
-  function ensureStyle() {
+  function injectStyle() {
 
     if (
       document.getElementById(
@@ -2491,8 +1698,18 @@
 
       #${BUTTON_ID} {
 
-        width:
-          100%;
+        position:
+          fixed;
+
+        right:
+          18px;
+
+        bottom:
+          18px;
+
+        z-index:
+          2147481000;
+
 
         display:
           none;
@@ -2501,42 +1718,45 @@
           center;
 
         gap:
-          11px;
+          8px;
 
 
         min-height:
-          44px;
+          42px;
 
 
         padding:
-          10px 12px;
-
-
-        margin:
-          2px 0;
-
-
-        box-sizing:
-          border-box;
+          9px 14px;
 
 
         border:
-          1px solid transparent;
+
+          1px solid
+          rgba(
+            99,
+            102,
+            241,
+            .18
+          );
 
 
         border-radius:
-          11px;
+          12px;
 
 
         background:
-          transparent;
+
+          var(
+            --card-bg,
+            #ffffff
+          );
 
 
         color:
 
           var(
-            --text-secondary,
-            #64748b
+            --text-primary,
+            #0f172a
           );
 
 
@@ -2545,59 +1765,54 @@
 
 
         font-size:
-          .88rem;
+          .80rem;
 
 
         font-weight:
-          650;
-
-
-        text-align:
-          left;
+          750;
 
 
         cursor:
           pointer;
 
 
+        box-shadow:
+
+          0 8px 24px
+          rgba(
+            15,
+            23,
+            42,
+            .12
+          );
+
+
         transition:
-          .16s ease;
+          transform .16s ease,
+          box-shadow .16s ease;
       }
 
 
       #${BUTTON_ID}:hover {
 
-        background:
+        transform:
+          translateY(-1px);
 
+
+        box-shadow:
+
+          0 10px 28px
           rgba(
-            99,
-            102,
-            241,
-            .08
-          );
-
-
-        border-color:
-
-          rgba(
-            99,
-            102,
-            241,
-            .10
-          );
-
-
-        color:
-
-          var(
-            --purple-primary,
-            #6366f1
+            15,
+            23,
+            42,
+            .15
           );
       }
 
 
       #${BUTTON_ID}
-      .mi {
+      .medsim-resume-safe-icon {
 
         display:
           inline-flex;
@@ -2610,56 +1825,32 @@
 
 
         width:
-          30px;
+          27px;
 
         height:
-          30px;
+          27px;
 
 
         border-radius:
-          9px;
+          8px;
+
+
+        color:
+          #ffffff;
 
 
         background:
 
-          rgba(
-            99,
-            102,
-            241,
-            .09
+          linear-gradient(
+            135deg,
+            #4f46e5,
+            #7c3aed
           );
-
-
-        color:
-
-          var(
-            --purple-primary,
-            #6366f1
-          );
-
-
-        font-weight:
-          800;
       }
 
 
       #${BUTTON_ID}
-      .badge {
-
-        margin-left:
-          auto;
-
-
-        min-width:
-          22px;
-
-        height:
-          22px;
-
-
-        padding:
-          0 6px;
-
+      .medsim-resume-safe-count {
 
         display:
           inline-flex;
@@ -2669,6 +1860,17 @@
 
         justify-content:
           center;
+
+
+        min-width:
+          21px;
+
+        height:
+          21px;
+
+
+        padding:
+          0 5px;
 
 
         border-radius:
@@ -2694,7 +1896,7 @@
 
 
         font-size:
-          .72rem;
+          .70rem;
 
 
         font-weight:
@@ -2702,8 +1904,6 @@
       }
 
 
-
-      /* MODAL */
 
       #${MODAL_ID} {
 
@@ -2733,6 +1933,10 @@
           18px;
 
 
+        box-sizing:
+          border-box;
+
+
         background:
 
           rgba(
@@ -2758,12 +1962,12 @@
 
 
       #${MODAL_ID}
-      .card {
+      .medsim-resume-safe-card {
 
         width:
 
           min(
-            560px,
+            520px,
             100%
           );
 
@@ -2826,7 +2030,7 @@
 
 
       #${MODAL_ID}
-      .head {
+      .medsim-resume-safe-head {
 
         display:
           flex;
@@ -2847,10 +2051,10 @@
 
 
       #${MODAL_ID}
-      .title {
+      .medsim-resume-safe-title {
 
         font-size:
-          1.02rem;
+          1rem;
 
 
         font-weight:
@@ -2859,7 +2063,7 @@
 
 
       #${MODAL_ID}
-      .sub {
+      .medsim-resume-safe-subtitle {
 
         margin-top:
           3px;
@@ -2874,12 +2078,12 @@
 
 
         font-size:
-          .78rem;
+          .76rem;
       }
 
 
       #${MODAL_ID}
-      .close {
+      .medsim-resume-safe-close {
 
         width:
           34px;
@@ -2914,8 +2118,12 @@
           );
 
 
+        font:
+          inherit;
+
+
         font-size:
-          21px;
+          20px;
 
 
         cursor:
@@ -2924,7 +2132,7 @@
 
 
       #${MODAL_ID}
-      .resume-list {
+      .medsim-resume-safe-list {
 
         display:
           grid;
@@ -2935,7 +2143,7 @@
 
 
       #${MODAL_ID}
-      .resume-item {
+      .medsim-resume-safe-item {
 
         padding:
           12px;
@@ -2966,10 +2174,10 @@
 
 
       #${MODAL_ID}
-      .resume-name {
+      .medsim-resume-safe-name {
 
         font-size:
-          .86rem;
+          .85rem;
 
 
         font-weight:
@@ -2978,7 +2186,7 @@
 
 
       #${MODAL_ID}
-      .resume-meta {
+      .medsim-resume-safe-meta {
 
         margin-top:
           4px;
@@ -2993,7 +2201,7 @@
 
 
         font-size:
-          .74rem;
+          .72rem;
 
 
         line-height:
@@ -3002,25 +2210,25 @@
 
 
       #${MODAL_ID}
-      .resume-actions {
+      .medsim-resume-safe-actions {
 
         display:
           flex;
 
+        flex-wrap:
+          wrap;
+
         gap:
           8px;
 
+
         margin-top:
           10px;
-
-        flex-wrap:
-          wrap;
       }
 
 
       #${MODAL_ID}
-      .resume-actions
-      button {
+      .medsim-resume-safe-action {
 
         min-height:
           36px;
@@ -3030,10 +2238,6 @@
           8px 11px;
 
 
-        border-radius:
-          9px;
-
-
         border:
 
           1px solid
@@ -3041,6 +2245,10 @@
             --border-color,
             #dbe2ea
           );
+
+
+        border-radius:
+          9px;
 
 
         background:
@@ -3064,7 +2272,7 @@
 
 
         font-size:
-          .76rem;
+          .75rem;
 
 
         font-weight:
@@ -3077,8 +2285,7 @@
 
 
       #${MODAL_ID}
-      .resume-actions
-      .primary {
+      .medsim-resume-safe-action.primary {
 
         border-color:
           transparent;
@@ -3099,8 +2306,7 @@
 
 
       #${MODAL_ID}
-      .resume-actions
-      .danger {
+      .medsim-resume-safe-action.danger {
 
         color:
           #b91c1c;
@@ -3128,38 +2334,14 @@
 
 
       #${MODAL_ID}
-      .empty {
-
-        padding:
-          18px;
-
-
-        text-align:
-          center;
-
-
-        color:
-
-          var(
-            --text-secondary,
-            #64748b
-          );
-
-
-        font-size:
-          .82rem;
-      }
-
-
-      #${MODAL_ID}
-      .note {
+      .medsim-resume-safe-note {
 
         margin-top:
           12px;
 
 
         padding:
-          10px 11px;
+          9px 10px;
 
 
         border-radius:
@@ -3172,7 +2354,7 @@
             148,
             163,
             184,
-            .065
+            .06
           );
 
 
@@ -3185,7 +2367,7 @@
 
 
         font-size:
-          .69rem;
+          .68rem;
 
 
         line-height:
@@ -3198,34 +2380,20 @@
         560px
       ) {
 
+        #${BUTTON_ID} {
+
+          right:
+            10px;
+
+          bottom:
+            10px;
+        }
+
+
         #${MODAL_ID} {
 
           padding:
             12px;
-        }
-
-
-        #${MODAL_ID}
-        .card {
-
-          padding:
-            15px;
-
-
-          border-radius:
-            15px;
-        }
-
-
-        #${MODAL_ID}
-        .resume-actions {
-
-          display:
-            grid;
-
-
-          grid-template-columns:
-            1fr 1fr;
         }
 
       }
@@ -3234,24 +2402,80 @@
 
 
     document.head
-      .appendChild(
-        style
-      );
+      .appendChild(style);
   }
-
 
 
   /* ============================================================
      INTERFACE
      ============================================================ */
 
-  function ensureUI() {
+  function createUI() {
 
-    ensureStyle();
+    injectStyle();
 
 
+    if (
+      !document.getElementById(
+        BUTTON_ID
+      )
+    ) {
 
-    /* MODAL */
+      const button =
+        document.createElement(
+          'button'
+        );
+
+
+      button.id =
+        BUTTON_ID;
+
+
+      button.type =
+        'button';
+
+
+      button.innerHTML = `
+
+        <span
+          class="medsim-resume-safe-icon"
+          aria-hidden="true">
+
+          ↻
+
+        </span>
+
+        <span>
+          Retomar simulado
+        </span>
+
+        <span
+          class="medsim-resume-safe-count">
+
+          0
+
+        </span>
+
+      `;
+
+
+      button.addEventListener(
+        'click',
+        openList
+      );
+
+
+      /*
+       * IMPORTANTE:
+       *
+       * Vai direto para document.body.
+       * Não entra no menu lateral.
+       */
+
+      document.body
+        .appendChild(button);
+    }
+
 
     if (
       !document.getElementById(
@@ -3276,37 +2500,27 @@
       modal.innerHTML = `
 
         <div
-          class="card"
+          class="medsim-resume-safe-card"
           role="dialog"
-          aria-modal="true"
-          aria-labelledby="medsim-resume-title">
+          aria-modal="true">
 
-
-          <div class="head">
+          <div class="medsim-resume-safe-head">
 
             <div>
 
-              <div
-                id="medsim-resume-title"
-                class="title">
-
+              <div class="medsim-resume-safe-title">
                 Retomar simulado
-
               </div>
 
-
-              <div class="sub">
-
-                Continue de onde você parou neste navegador
-
+              <div class="medsim-resume-safe-subtitle">
+                Continue um simulado em andamento neste navegador
               </div>
 
             </div>
 
-
             <button
-              class="close"
               type="button"
+              class="medsim-resume-safe-close"
               aria-label="Fechar">
 
               ×
@@ -3316,16 +2530,15 @@
           </div>
 
 
-          <div class="resume-list">
+          <div class="medsim-resume-safe-list">
 
           </div>
 
 
-          <div class="note">
+          <div class="medsim-resume-safe-note">
 
-            O MedSim salva uma camada universal de progresso local.
-            Quando um simulado já possui salvamento próprio,
-            ele continua sendo priorizado.
+            O salvamento universal complementa o sistema interno
+            dos simulados. Nenhum resultado já concluído é apagado.
 
           </div>
 
@@ -3335,16 +2548,13 @@
 
 
       document.body
-        .appendChild(
-          modal
-        );
+        .appendChild(modal);
 
 
       modal
         .querySelector(
-          '.close'
+          '.medsim-resume-safe-close'
         )
-
         .addEventListener(
           'click',
           closeModal
@@ -3355,11 +2565,10 @@
 
         'pointerdown',
 
-        event => {
+        function (event) {
 
           if (
-            event.target ===
-            modal
+            event.target === modal
           ) {
 
             closeModal();
@@ -3371,84 +2580,11 @@
     }
 
 
-
-    /* BOTÃO DO HUB */
-
-    if (
-      !document.getElementById(
-        BUTTON_ID
-      )
-    ) {
-
-      const button =
-        document.createElement(
-          'button'
-        );
-
-
-      button.id =
-        BUTTON_ID;
-
-
-      button.type =
-        'button';
-
-
-      button.innerHTML = `
-
-        <span class="mi">
-          ↻
-        </span>
-
-        <span>
-          Retomar simulado
-        </span>
-
-        <span class="badge">
-          0
-        </span>
-
-      `;
-
-
-      button.addEventListener(
-
-        'click',
-
-        openListModal
-
-      );
-
-
-      const nav =
-
-        document.querySelector(
-          '.nav-menu'
-        )
-
-        ||
-
-        document.querySelector(
-          '.sidebar'
-        )
-
-        ||
-
-        document.body;
-
-
-      nav.appendChild(
-        button
-      );
-    }
-
-
-    updateHubUI();
+    updateButton();
   }
 
 
-
-  function updateHubUI() {
+  function updateButton() {
 
     const button =
       document.getElementById(
@@ -3456,50 +2592,40 @@
       );
 
 
-    if (
-      !button
-    ) {
-
+    if (!button) {
       return;
     }
 
 
-    const count =
-      allRecords()
-        .length;
+    const records =
+      allRecords();
 
 
-    /*
-     * Só aparece se realmente existir
-     * simulado em andamento.
-     */
+    const show =
+      records.length > 0 &&
+      !simulationOpen();
+
 
     button.style.display =
-
-      count
-
+      show
         ? 'flex'
-
         : 'none';
 
 
-    const badge =
+    const count =
       button.querySelector(
-        '.badge'
+        '.medsim-resume-safe-count'
       );
 
 
-    if (
-      badge
-    ) {
+    if (count) {
 
-      badge.textContent =
+      count.textContent =
         String(
-          count
+          records.length
         );
     }
   }
-
 
 
   function closeModal() {
@@ -3510,9 +2636,7 @@
       );
 
 
-    if (
-      modal
-    ) {
+    if (modal) {
 
       modal.dataset.open =
         'false';
@@ -3520,12 +2644,11 @@
   }
 
 
-
   /* ============================================================
-     LISTA DE RETOMADAS
+     LISTA DE SIMULADOS EM ANDAMENTO
      ============================================================ */
 
-  function renderList() {
+  function openList() {
 
     const modal =
       document.getElementById(
@@ -3533,51 +2656,23 @@
       );
 
 
-    if (
-      !modal
-    ) {
-
+    if (!modal) {
       return;
     }
 
 
     const list =
       modal.querySelector(
-        '.resume-list'
+        '.medsim-resume-safe-list'
       );
-
-
-    const records =
-      allRecords();
 
 
     list.innerHTML =
       '';
 
 
-
-    if (
-      !records.length
-    ) {
-
-      list.innerHTML = `
-
-        <div class="empty">
-
-          Nenhum simulado em andamento.
-
-        </div>
-
-      `;
-
-
-      return;
-    }
-
-
-
-    records.forEach(
-      record => {
+    allRecords()
+      .forEach(record => {
 
         const item =
           document.createElement(
@@ -3586,47 +2681,32 @@
 
 
         item.className =
-          'resume-item';
-
-
-
-        const question =
-
-          record.question &&
-          record.question.label
-
-            ? record.question.label
-
-            : 'Progresso salvo';
-
+          'medsim-resume-safe-item';
 
 
         item.innerHTML = `
 
-          <div class="resume-name">
+          <div class="medsim-resume-safe-name">
 
           </div>
 
-
-          <div class="resume-meta">
+          <div class="medsim-resume-safe-meta">
 
           </div>
 
-
-          <div class="resume-actions">
+          <div class="medsim-resume-safe-actions">
 
             <button
               type="button"
-              class="primary">
+              class="medsim-resume-safe-action primary">
 
               Continuar
 
             </button>
 
-
             <button
               type="button"
-              class="danger">
+              class="medsim-resume-safe-action danger">
 
               Descartar progresso
 
@@ -3637,36 +2717,46 @@
         `;
 
 
-
         item
           .querySelector(
-            '.resume-name'
+            '.medsim-resume-safe-name'
           )
           .textContent =
 
-            record.title ||
+            record.title
+
+            ||
 
             displayName(
               record.path
             );
 
 
-
         item
           .querySelector(
-            '.resume-meta'
+            '.medsim-resume-safe-meta'
           )
           .textContent =
 
             `${
 
-              record.subject ||
+              record.subject
+
+              ||
 
               subjectFrom(
                 record.path
               )
 
-            } · ${question} · ${
+            } · ${
+
+              record.question
+
+              ||
+
+              'Progresso salvo'
+
+            } · ${
 
               formatDate(
                 record.updatedAt
@@ -3675,68 +2765,42 @@
             }`;
 
 
-
-        item
-          .querySelector(
-            '.primary'
-          )
-
-          .addEventListener(
-
-            'click',
-
-            () => {
-
-              closeModal();
-
-
-              invokeCurrentCarregar(
-
-                [
-                  record.path
-                ],
-
-                normPath(
-                  record.path
-                ),
-
-                'resume'
-
-              );
-
-            }
-
+        const buttons =
+          item.querySelectorAll(
+            'button'
           );
 
 
-
-        item
-          .querySelector(
-            '.danger'
-          )
-
+        buttons[0]
           .addEventListener(
-
             'click',
+            function () {
 
-            () => {
+              openSimulation(
+                record
+              );
+            }
+          );
+
+
+        buttons[1]
+          .addEventListener(
+            'click',
+            function () {
 
               const ok =
                 confirm(
 
-                  'Descartar o progresso universal salvo deste simulado?\n\n'
+                  'Descartar o progresso salvo deste simulado?\n\n'
 
                   +
 
-                  'Isso não apaga resultados já concluídos.'
+                  'Resultados já concluídos não serão apagados.'
 
                 );
 
 
-              if (
-                !ok
-              ) {
-
+              if (!ok) {
                 return;
               }
 
@@ -3746,53 +2810,33 @@
               );
 
 
-              renderList();
+              openList();
 
             }
-
           );
 
 
-        list.appendChild(
-          item
-        );
+        list.appendChild(item);
 
-      }
+      });
 
-    );
+
+    modal.dataset.open =
+      'true';
   }
-
-
-
-  function openListModal() {
-
-    ensureUI();
-
-    renderList();
-
-
-    document
-      .getElementById(
-        MODAL_ID
-      )
-      .dataset.open =
-        'true';
-  }
-
 
 
   /* ============================================================
-     PERGUNTA AO ABRIR SIMULADO COM PROGRESSO
+     ABERTURA NORMAL DE SIMULADO COM PROGRESSO
+
+     A prova já abriu.
+     O usuário decide se quer restaurar a camada universal.
      ============================================================ */
 
-  function showResumeChoice(
+  function showOpenChoice(
     record,
-    onResume,
-    onFresh
+    frame
   ) {
-
-    ensureUI();
-
 
     const modal =
       document.getElementById(
@@ -3800,92 +2844,82 @@
       );
 
 
+    if (!modal) {
+      return;
+    }
+
+
     const list =
       modal.querySelector(
-        '.resume-list'
+        '.medsim-resume-safe-list'
       );
 
 
-    list.innerHTML =
-      '';
+    list.innerHTML = `
 
+      <div class="medsim-resume-safe-item">
 
+        <div class="medsim-resume-safe-name">
 
-    const item =
-      document.createElement(
-        'div'
-      );
+        </div>
 
+        <div class="medsim-resume-safe-meta">
 
-    item.className =
-      'resume-item';
+        </div>
 
+        <div class="medsim-resume-safe-actions">
 
+          <button
+            type="button"
+            class="medsim-resume-safe-action primary">
 
-    item.innerHTML = `
+            Continuar de onde parei
 
-      <div class="resume-name">
+          </button>
 
-      </div>
+          <button
+            type="button"
+            class="medsim-resume-safe-action">
 
+            Começar novamente
 
-      <div class="resume-meta">
+          </button>
 
-      </div>
-
-
-      <div class="resume-actions">
-
-        <button
-          type="button"
-          class="primary">
-
-          Continuar de onde parei
-
-        </button>
-
-
-        <button
-          type="button">
-
-          Abrir sem restaurar
-
-        </button>
+        </div>
 
       </div>
 
     `;
 
 
-
-    item
+    list
       .querySelector(
-        '.resume-name'
+        '.medsim-resume-safe-name'
       )
       .textContent =
 
-        record.title ||
+        record.title
+
+        ||
 
         displayName(
           record.path
         );
 
 
-
-    item
+    list
       .querySelector(
-        '.resume-meta'
+        '.medsim-resume-safe-meta'
       )
       .textContent =
 
         `${
 
-          record.question &&
-          record.question.label
+          record.question
 
-            ? record.question.label
+          ||
 
-            : 'Progresso salvo'
+          'Progresso salvo'
 
         } · ${
 
@@ -3896,79 +2930,65 @@
         }`;
 
 
-
     const buttons =
-
-      item.querySelectorAll(
-
-        '.resume-actions button'
-
+      list.querySelectorAll(
+        'button'
       );
-
 
 
     buttons[0]
       .addEventListener(
-
         'click',
-
-        () => {
+        function () {
 
           closeModal();
 
-          onResume();
+
+          restoreRecord(
+            frame,
+            record
+          );
 
         }
-
       );
-
 
 
     buttons[1]
       .addEventListener(
-
         'click',
-
-        () => {
+        function () {
 
           const ok =
             confirm(
 
-              'Abrir sem restaurar o progresso universal salvo?\n\n'
+              'Começar sem restaurar o progresso salvo?\n\n'
 
               +
 
-              'O registro de retomada será descartado, mas resultados já concluídos não serão apagados.'
+              'O registro de retomada deste simulado será descartado.'
 
             );
 
 
-          if (
-            !ok
-          ) {
-
+          if (!ok) {
             return;
           }
 
 
+          removeRecord(
+            record.path
+          );
+
+
           closeModal();
 
-          onFresh();
-
         }
-
       );
-
-
-    list.appendChild(
-      item
-    );
 
 
     modal.dataset.open =
       'true';
   }
-
 
 
   /* ============================================================
@@ -3977,89 +2997,40 @@
 
   function start() {
 
-    ensureUI();
+    migrateLegacy();
 
-    hookCarregar();
+    createUI();
 
     scanFrames();
 
 
-
     /*
-     * Detecta iframes ou funções
-     * criadas posteriormente.
-     */
-
-    const observer =
-      new MutationObserver(
-
-        () => {
-
-          ensureUI();
-
-          scanFrames();
-
-          hookCarregar();
-
-        }
-
-      );
-
-
-    observer.observe(
-
-      document.body,
-
-      {
-
-        childList:
-          true,
-
-        subtree:
-          true
-
-      }
-
-    );
-
-
-
-    /*
-     * Segurança adicional contra
-     * scripts carregados depois.
+     * Sem MutationObserver sobre o Hub.
+     *
+     * Apenas procura novos iframes ocasionalmente.
      */
 
     setInterval(
-
-      () => {
-
-        hookCarregar();
+      function () {
 
         scanFrames();
 
-        updateHubUI();
+        updateButton();
 
       },
-
       1200
-
     );
 
-
-
-    /*
-     * ESC fecha janela.
-     */
 
     document.addEventListener(
 
       'keydown',
 
-      event => {
+      function (event) {
 
         if (
           event.key ===
-            'Escape'
+          'Escape'
         ) {
 
           closeModal();
@@ -4070,31 +3041,32 @@
     );
 
 
-
-    /*
-     * Último salvamento antes
-     * de fechar a página.
-     */
-
     window.addEventListener(
 
       'beforeunload',
 
-      () =>
-        captureActive(
-          true
-        )
+      function () {
+
+        if (active) {
+
+          active.dirty =
+            true;
+
+
+          captureActive(
+            true
+          );
+        }
+
+      }
 
     );
 
 
     console.info(
-
-      '[MedSim] Retomar simulado universal v1 ativo.'
-
+      '[MedSim] Retomar simulado v2 Safe ativo.'
     );
   }
-
 
 
   if (
