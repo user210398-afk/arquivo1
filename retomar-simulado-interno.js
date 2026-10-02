@@ -1,19 +1,19 @@
 (function () {
   'use strict';
 
-
   /* ============================================================
-     MEDSIM — RETOMAR SIMULADO INTERNO v1
+     MEDSIM — RETOMAR SIMULADO INTERNO v2
 
-     Trabalha dentro dos iframes dos simulados.
+     Responsável por:
 
-     O Hub continua sendo controlado por:
+     - mostrar Continuar / Recomeçar dentro do simulado;
+     - registrar a navegação REAL utilizada pelo usuário;
+     - reproduzir essa navegação ao continuar;
+     - restaurar respostas;
+     - preservar históricos já concluídos.
+
+     O botão do Hub continua sendo responsabilidade de:
      retomar-simulado.js
-
-     Este arquivo controla exclusivamente:
-
-     - Continuar de onde parei
-     - Recomeçar pela primeira questão
      ============================================================ */
 
 
@@ -21,16 +21,24 @@
     'medsim_resume_v2';
 
 
-  const STYLE_ID =
-    'medsim-resume-inside-style';
-
-
-  const PANEL_ID =
-    'medsim-resume-inside-panel';
+  const TRAIL_KEY =
+    'medsim_resume_trail_v2';
 
 
   const ACTION_KEY =
-    'medsim_resume_inside_action_v1';
+    'medsim_resume_inside_action_v2';
+
+
+  const STYLE_ID =
+    'medsim-resume-inside-style-v2';
+
+
+  const PANEL_ID =
+    'medsim-resume-inside-panel-v2';
+
+
+  const registered =
+    new WeakSet();
 
 
 
@@ -112,6 +120,7 @@
       return decodeURIComponent(
         url.pathname
       )
+
         .replace(
           /^\/+/,
           ''
@@ -145,6 +154,7 @@
 
         );
 
+
       } catch (_) {
 
         return String(value)
@@ -171,19 +181,46 @@
 
 
 
+  function norm(value) {
+
+    return String(
+      value || ''
+    )
+
+      .normalize(
+        'NFD'
+      )
+
+      .replace(
+        /[\u0300-\u036f]/g,
+        ''
+      )
+
+      .toLowerCase()
+
+      .replace(
+        /\s+/g,
+        ' '
+      )
+
+      .trim();
+  }
+
+
+
   /* ============================================================
-     BANCO DO RETOMAR
+     LOCALSTORAGE
      ============================================================ */
 
-  function loadStore() {
+  function loadObject(key) {
 
     try {
 
-      const raw =
+      const value =
         JSON.parse(
 
           localStorage.getItem(
-            STORE_KEY
+            key
           )
 
           || '{}'
@@ -193,12 +230,12 @@
 
       return (
 
-        raw &&
-        typeof raw ===
+        value &&
+        typeof value ===
           'object' &&
-        !Array.isArray(raw)
+        !Array.isArray(value)
 
-          ? raw
+          ? value
 
           : {}
 
@@ -213,16 +250,19 @@
 
 
 
-  function saveStore(store) {
+  function saveObject(
+    key,
+    value
+  ) {
 
     try {
 
       localStorage.setItem(
 
-        STORE_KEY,
+        key,
 
         JSON.stringify(
-          store
+          value
         )
 
       );
@@ -236,7 +276,9 @@
 
     return (
 
-      loadStore()[
+      loadObject(
+        STORE_KEY
+      )[
         keyPath(path)
       ]
 
@@ -252,7 +294,9 @@
   function removeRecord(path) {
 
     const store =
-      loadStore();
+      loadObject(
+        STORE_KEY
+      );
 
 
     delete store[
@@ -260,8 +304,98 @@
     ];
 
 
-    saveStore(
+    saveObject(
+      STORE_KEY,
       store
+    );
+  }
+
+
+
+  /* ============================================================
+     TRILHA DE NAVEGAÇÃO
+
+     Guarda os botões reais usados para
+     chegar até a questão atual.
+     ============================================================ */
+
+  function getTrail(path) {
+
+    const all =
+      loadObject(
+        TRAIL_KEY
+      );
+
+
+    const trail =
+      all[
+        keyPath(path)
+      ];
+
+
+    return Array.isArray(
+      trail
+    )
+
+      ? trail
+
+      : [];
+  }
+
+
+
+  function setTrail(
+    path,
+    trail
+  ) {
+
+    const all =
+      loadObject(
+        TRAIL_KEY
+      );
+
+
+    /*
+     * Limite de segurança.
+     */
+
+    all[
+      keyPath(path)
+    ] =
+
+      Array.isArray(trail)
+
+        ? trail.slice(
+            -150
+          )
+
+        : [];
+
+
+    saveObject(
+      TRAIL_KEY,
+      all
+    );
+  }
+
+
+
+  function clearTrail(path) {
+
+    const all =
+      loadObject(
+        TRAIL_KEY
+      );
+
+
+    delete all[
+      keyPath(path)
+    ];
+
+
+    saveObject(
+      TRAIL_KEY,
+      all
     );
   }
 
@@ -308,6 +442,10 @@
 
 
 
+  /* ============================================================
+     QUESTÃO SALVA
+     ============================================================ */
+
   function questionLabel(record) {
 
     if (
@@ -350,62 +488,41 @@
 
 
 
-  function questionNumber(record) {
+  function targetQuestion(record) {
 
-    if (!record) {
-      return 0;
-    }
-
-
-    if (
+    const direct =
       Number(
-        record.questionNumber
-      )
-    ) {
 
-      return Number(
-        record.questionNumber
-      );
-    }
+        record &&
+        (
+          record.questionNumber
 
+          ||
 
-    if (
-      record.question &&
-      Number(
-        record.question.number
-      )
-    ) {
-
-      return Number(
-        record.question.number
-      );
-    }
-
-
-    const text =
-
-      typeof record.question ===
-        'string'
-
-        ? record.question
-
-        : (
+          (
             record.question &&
-            record.question.label
+            record.question.number
+          )
+        )
 
-              ? record.question.label
+      );
 
-              : ''
-          );
+
+    if (direct) {
+
+      return direct;
+    }
 
 
     const match =
-      String(text)
-        .match(
+      questionLabel(
+        record
+      )
+      .match(
 
-          /quest(?:ão|ao)\s*(\d+)/i
+        /quest(?:ão|ao)\s*(\d+)/i
 
-        );
+      );
 
 
     return match
@@ -420,7 +537,287 @@
 
 
   /* ============================================================
-     STATE NATIVO DO SIMULADO
+     ELEMENTO VISÍVEL
+     ============================================================ */
+
+  function visible(element) {
+
+    if (!element) {
+      return false;
+    }
+
+
+    try {
+
+      const style =
+
+        element
+          .ownerDocument
+          .defaultView
+          .getComputedStyle(
+            element
+          );
+
+
+      const rect =
+        element
+          .getBoundingClientRect();
+
+
+      return (
+
+        style.display !==
+          'none'
+
+        &&
+
+        style.visibility !==
+          'hidden'
+
+        &&
+
+        rect.width > 0
+
+        &&
+
+        rect.height > 0
+
+      );
+
+
+    } catch (_) {
+
+      return false;
+    }
+  }
+
+
+
+  /* ============================================================
+     QUESTÃO ATUAL
+     ============================================================ */
+
+  function currentQuestionNumber(doc) {
+
+    const selectors =
+
+      '[data-question],' +
+
+      '[data-questao],' +
+
+      '[class*="question"],' +
+
+      '[class*="questao"],' +
+
+      '[class*="quest"],' +
+
+      '[id*="question"],' +
+
+      '[id*="questao"],' +
+
+      '[id*="quest"],' +
+
+      '.progress,' +
+
+      '.counter,' +
+
+      'h1,h2,h3,h4,p,span';
+
+
+
+    const nodes = [
+
+      ...doc.querySelectorAll(
+        selectors
+      )
+
+    ].filter(
+      visible
+    );
+
+
+
+    for (
+      const node
+      of nodes
+    ) {
+
+      const text =
+        (
+          node.textContent ||
+          ''
+        ).trim();
+
+
+      if (
+        !text ||
+        text.length > 180
+      ) {
+
+        continue;
+      }
+
+
+      const match =
+        text.match(
+
+          /quest(?:ão|ao)\s*(\d+)(?:\s*(?:de|\/)\s*(\d+))?/i
+
+        );
+
+
+      if (match) {
+
+        return Number(
+          match[1]
+        );
+      }
+    }
+
+
+
+    const body =
+      (
+        doc.body &&
+        doc.body.innerText
+      )
+
+      ||
+
+      '';
+
+
+    const match =
+      body.match(
+
+        /quest(?:ão|ao)\s*(\d+)(?:\s*(?:de|\/)\s*(\d+))?/i
+
+      );
+
+
+    return match
+
+      ? Number(
+          match[1]
+        )
+
+      : 0;
+  }
+
+
+
+  /* ============================================================
+     ASSINATURA DA QUESTÃO
+
+     Usada para perceber que o clique
+     realmente mudou de questão.
+     ============================================================ */
+
+  function questionSignature(doc) {
+
+    const number =
+      currentQuestionNumber(
+        doc
+      );
+
+
+    if (number) {
+
+      return (
+        'numero:' +
+        number
+      );
+    }
+
+
+
+    const selectors =
+
+      '[data-question],' +
+
+      '[data-questao],' +
+
+      '[class*="question"],' +
+
+      '[class*="questao"],' +
+
+      '[class*="quest"],' +
+
+      '[id*="question"],' +
+
+      '[id*="questao"],' +
+
+      '[id*="quest"]';
+
+
+
+    const candidates = [
+
+      ...doc.querySelectorAll(
+        selectors
+      )
+
+    ]
+
+      .filter(
+        visible
+      )
+
+      .map(
+        element =>
+
+          norm(
+            element.textContent
+          ).slice(
+            0,
+            700
+          )
+      )
+
+      .filter(
+        text =>
+          text.length >=
+          20
+      )
+
+      .sort(
+        (a, b) =>
+
+          b.length -
+          a.length
+      );
+
+
+    if (
+      candidates[0]
+    ) {
+
+      return (
+        'texto:' +
+        candidates[0]
+      );
+    }
+
+
+    return (
+
+      'body:' +
+
+      norm(
+        doc.body &&
+        doc.body.innerText
+      ).slice(
+        0,
+        900
+      )
+
+    );
+  }
+
+
+
+  /* ============================================================
+     STATE NATIVO
      ============================================================ */
 
   function scriptText(doc) {
@@ -488,39 +885,32 @@
 
 
 
-    /*
-     * Também utiliza os states
-     * que foram salvos no registro.
-     */
-
-    if (
-      record &&
-      record.nativeState &&
-      typeof record.nativeState ===
-        'object'
-    ) {
-
-      Object.keys(
+    Object.keys(
+      (
+        record &&
         record.nativeState
       )
-      .forEach(
-        key => {
 
-          if (
+      || {}
+    )
 
-            /^simulado_[a-z0-9_-]+_state$/i
-              .test(key)
+    .forEach(
+      key => {
 
-          ) {
+        if (
 
-            keys.add(
-              key
-            );
-          }
+          /^simulado_[a-z0-9_-]+_state$/i
+            .test(key)
 
+        ) {
+
+          keys.add(
+            key
+          );
         }
-      );
-    }
+
+      }
+    );
 
 
     return [
@@ -532,19 +922,15 @@
 
   function applyNativeState(record) {
 
-    if (
-      !record ||
-      !record.nativeState ||
-      typeof record.nativeState !==
-        'object'
-    ) {
-
-      return;
-    }
-
-
     Object.entries(
-      record.nativeState
+
+      (
+        record &&
+        record.nativeState
+      )
+
+      || {}
+
     )
     .forEach(
       ([key, value]) => {
@@ -596,7 +982,7 @@
 
 
   /* ============================================================
-     RESPOSTAS SALVAS
+     RESPOSTAS
      ============================================================ */
 
   function restorableFields(doc) {
@@ -608,29 +994,30 @@
       )
 
     ]
+    .filter(
+      element => {
 
-      .filter(
-        element => {
-
-          const type =
-            (
-              element.type ||
-              ''
-            ).toLowerCase();
+        const type =
+          (
+            element.type ||
+            ''
+          ).toLowerCase();
 
 
-          return ![
+        return ![
 
-            'button',
-            'submit',
-            'reset',
-            'file',
-            'password',
-            'hidden'
+          'button',
+          'submit',
+          'reset',
+          'file',
+          'password',
+          'hidden'
 
-          ].includes(type);
-        }
-      );
+        ].includes(
+          type
+        );
+      }
+    );
   }
 
 
@@ -644,15 +1031,15 @@
       saved.id
     ) {
 
-      const element =
+      const byId =
         doc.getElementById(
           saved.id
         );
 
 
-      if (element) {
+      if (byId) {
 
-        return element;
+        return byId;
       }
     }
 
@@ -796,11 +1183,6 @@
 
 
 
-          /*
-           * Faz o JavaScript nativo
-           * perceber a mudança.
-           */
-
           element.dispatchEvent(
 
             new Event(
@@ -842,169 +1224,415 @@
 
 
   /* ============================================================
-     QUESTÃO ATUAL
+     DESCREVER UM BOTÃO REAL
+
+     Em vez de guardar apenas "Próxima",
+     guardamos id, texto, atributos etc.
      ============================================================ */
 
-  function visible(element) {
-
-    if (!element) {
-      return false;
-    }
-
-
-    try {
-
-      const style =
-
-        element
-          .ownerDocument
-          .defaultView
-          .getComputedStyle(
-            element
-          );
-
-
-      const rect =
-        element
-          .getBoundingClientRect();
-
-
-      return (
-
-        style.display !==
-          'none'
-
-        &&
-
-        style.visibility !==
-          'hidden'
-
-        &&
-
-        rect.width > 0
-
-        &&
-
-        rect.height > 0
-
-      );
-
-
-    } catch (_) {
-
-      return false;
-    }
-  }
-
-
-
-  function currentQuestionNumber(
+  function descriptorFor(
+    element,
     doc
   ) {
 
-    const nodes = [
+    if (!element) {
+
+      return null;
+    }
+
+
+    const clickable =
+
+      element.closest
+
+        ? element.closest(
+
+            'button,' +
+            'a,' +
+            '[role="button"],' +
+            '[onclick],' +
+            'input[type="button"],' +
+            'input[type="submit"]'
+
+          )
+
+        : element;
+
+
+    if (!clickable) {
+
+      return null;
+    }
+
+
+
+    const text =
+
+      (
+        clickable.textContent
+
+        ||
+
+        clickable.value
+
+        ||
+
+        ''
+      )
+
+      .trim()
+
+      .slice(
+        0,
+        160
+      );
+
+
+    const aria =
+
+      (
+        clickable.getAttribute(
+          'aria-label'
+        )
+
+        ||
+
+        ''
+      )
+
+      .trim()
+
+      .slice(
+        0,
+        160
+      );
+
+
+    const title =
+
+      (
+        clickable.getAttribute(
+          'title'
+        )
+
+        ||
+
+        ''
+      )
+
+      .trim()
+
+      .slice(
+        0,
+        160
+      );
+
+
+
+    const data =
+      {};
+
+
+    [
+
+      'data-action',
+      'data-index',
+      'data-question',
+      'data-questao',
+      'data-step',
+      'data-page',
+      'data-slide'
+
+    ]
+    .forEach(
+      key => {
+
+        const value =
+          clickable.getAttribute(
+            key
+          );
+
+
+        if (
+          value !== null
+        ) {
+
+          data[key] =
+            value;
+        }
+
+      }
+    );
+
+
+
+    const sameText = [
 
       ...doc.querySelectorAll(
 
-        '[class*="quest"],' +
-        '[id*="quest"],' +
-        '.progress,' +
-        '.counter,' +
-        'h1,h2,h3,h4,p,span'
+        'button,' +
+        'a,' +
+        '[role="button"],' +
+        '[onclick],' +
+        'input[type="button"],' +
+        'input[type="submit"]'
 
       )
 
     ]
+
     .filter(
-      visible
+      item =>
+
+        norm(
+
+          item.textContent
+
+          ||
+
+          item.value
+
+          ||
+
+          ''
+
+        )
+
+        ===
+
+        norm(text)
     );
+
+
+
+    return {
+
+      tag:
+        clickable.tagName ||
+        '',
+
+      id:
+        clickable.id ||
+        '',
+
+      name:
+
+        clickable.getAttribute(
+          'name'
+        )
+
+        ||
+
+        '',
+
+      value:
+        clickable.value ||
+        '',
+
+      text,
+
+      aria,
+
+      title,
+
+      data,
+
+      classes:
+
+        [
+          ...(
+            clickable.classList ||
+            []
+          )
+        ].slice(
+          0,
+          8
+        ),
+
+      textOrdinal:
+
+        sameText.indexOf(
+          clickable
+        )
+
+    };
+  }
+
+
+
+  /* ============================================================
+     LOCALIZAR NOVAMENTE O MESMO BOTÃO
+     ============================================================ */
+
+  function matchesDescriptor(
+    element,
+    descriptor
+  ) {
+
+    if (
+      !element ||
+      !descriptor
+    ) {
+
+      return false;
+    }
+
+
+    if (
+      descriptor.tag &&
+      element.tagName !==
+        descriptor.tag
+    ) {
+
+      return false;
+    }
+
+
+    if (
+      descriptor.name &&
+      element.getAttribute(
+        'name'
+      ) !== descriptor.name
+    ) {
+
+      return false;
+    }
+
+
+    if (
+      descriptor.aria &&
+      (
+        element.getAttribute(
+          'aria-label'
+        )
+
+        || ''
+      )
+
+      !==
+
+      descriptor.aria
+    ) {
+
+      return false;
+    }
+
+
+    if (
+      descriptor.title &&
+      (
+        element.getAttribute(
+          'title'
+        )
+
+        || ''
+      )
+
+      !==
+
+      descriptor.title
+    ) {
+
+      return false;
+    }
 
 
 
     for (
-      const node
-      of nodes
+      const [key, value]
+      of Object.entries(
+        descriptor.data ||
+        {}
+      )
     ) {
 
-      const text =
-        (
-          node.textContent ||
-          ''
-        ).trim();
-
-
       if (
-        !text ||
-        text.length > 160
+        element.getAttribute(
+          key
+        ) !== value
       ) {
 
-        continue;
-      }
-
-
-      const match =
-        text.match(
-
-          /quest(?:ão|ao)\s*(\d+)/i
-
-        );
-
-
-      if (
-        match
-      ) {
-
-        return Number(
-          match[1]
-        );
+        return false;
       }
     }
 
 
 
-    const body =
+    if (
+      descriptor.text &&
+      norm(
 
-      (
-        doc.body &&
-        doc.body.innerText
+        element.textContent
+
+        ||
+
+        element.value
+
+        ||
+
+        ''
+
       )
 
-      || '';
+      !==
+
+      norm(
+        descriptor.text
+      )
+    ) {
+
+      return false;
+    }
 
 
-    const match =
-      body.match(
-
-        /quest(?:ão|ao)\s*(\d+)/i
-
-      );
-
-
-    return match
-
-      ? Number(
-          match[1]
-        )
-
-      : 0;
+    return true;
   }
 
 
 
-  /* ============================================================
-     PRÓXIMA / ANTERIOR
-     ============================================================ */
-
-  function findNavButton(
+  function findByDescriptor(
     doc,
-    direction
+    descriptor
   ) {
+
+    if (!descriptor) {
+
+      return null;
+    }
+
+
+
+    if (
+      descriptor.id
+    ) {
+
+      const byId =
+        doc.getElementById(
+          descriptor.id
+        );
+
+
+      if (
+        byId &&
+        visible(byId)
+      ) {
+
+        return byId;
+      }
+    }
+
+
 
     const nodes = [
 
       ...doc.querySelectorAll(
 
-        'button, a, [role="button"]'
+        'button,' +
+        'a,' +
+        '[role="button"],' +
+        '[onclick],' +
+        'input[type="button"],' +
+        'input[type="submit"]'
 
       )
 
@@ -1014,159 +1642,219 @@
     );
 
 
-    const regex =
 
-      direction ===
-        'next'
+    const exact =
+      nodes.filter(
+        element =>
 
-        ? /^(proxima|proximo|próxima|próximo|avancar|avançar|seguinte|next)\b/i
+          matchesDescriptor(
+            element,
+            descriptor
+          )
+      );
 
-        : /^(anterior|questao anterior|questão anterior|voltar questao|voltar questão|prev|previous)\b/i;
+
+    if (
+      exact.length
+    ) {
+
+      const index =
+        Math.max(
+
+          0,
+
+          Math.min(
+
+            descriptor.textOrdinal ||
+            0,
+
+            exact.length - 1
+
+          )
+
+        );
+
+
+      return exact[
+        index
+      ];
+    }
 
 
 
-    return (
+    if (
+      descriptor.text
+    ) {
 
-      nodes.find(
-        element => {
+      const sameText =
+        nodes.filter(
+          element =>
 
-          const text =
-            (
+            norm(
+
               element.textContent
 
               ||
 
-              element.getAttribute(
-                'aria-label'
-              )
+              element.value
 
               ||
 
               ''
-            ).trim();
+
+            )
+
+            ===
+
+            norm(
+              descriptor.text
+            )
+        );
 
 
-          return regex.test(
-            text
-          );
-        }
-      )
+      if (
+        sameText.length
+      ) {
 
-      || null
+        return sameText[
+          Math.max(
+
+            0,
+
+            Math.min(
+
+              descriptor.textOrdinal ||
+              0,
+
+              sameText.length - 1
+
+            )
+
+          )
+        ];
+      }
+    }
+
+
+
+    if (
+      descriptor.classes &&
+      descriptor.classes.length
+    ) {
+
+      const byClasses =
+        nodes.find(
+          element =>
+
+            descriptor.classes
+              .every(
+                className =>
+
+                  element.classList
+                    .contains(
+                      className
+                    )
+              )
+        );
+
+
+      if (byClasses) {
+
+        return byClasses;
+      }
+    }
+
+
+    return null;
+  }
+
+
+
+  /* ============================================================
+     BOTÕES QUE NÃO DEVEM SER GRAVADOS NA TRILHA
+     ============================================================ */
+
+  function shouldIgnoreControl(
+    element
+  ) {
+
+    const text =
+      norm(
+
+        element &&
+        (
+          element.textContent
+
+          ||
+
+          element.value
+
+          ||
+
+          element.getAttribute(
+            'aria-label'
+          )
+
+          ||
+
+          ''
+        )
+
+      );
+
+
+    return (
+
+      /voltar ao hub/
+        .test(text)
+
+      ||
+
+      /finalizar/
+        .test(text)
+
+      ||
+
+      /encerrar/
+        .test(text)
+
+      ||
+
+      /corrigir/
+        .test(text)
+
+      ||
+
+      /resultado/
+        .test(text)
+
+      ||
+
+      /gabarito/
+        .test(text)
+
+      ||
+
+      /reiniciar/
+        .test(text)
+
+      ||
+
+      /recomecar|recomeçar/
+        .test(text)
 
     );
   }
 
 
 
-  async function navigateToQuestion(
-    doc,
-    target
-  ) {
-
-    if (!target) {
-      return;
-    }
-
-
-    let current =
-      currentQuestionNumber(
-        doc
-      );
-
-
-    if (
-      !current ||
-      current === target
-    ) {
-
-      return;
-    }
-
-
-    let guard =
-      0;
-
-
-    while (
-
-      current
-
-      &&
-
-      current !== target
-
-      &&
-
-      guard++ < 80
-
-    ) {
-
-      const direction =
-
-        current < target
-
-          ? 'next'
-
-          : 'prev';
-
-
-      const button =
-        findNavButton(
-          doc,
-          direction
-        );
-
-
-      if (!button) {
-
-        break;
-      }
-
-
-      button.click();
-
-
-      await new Promise(
-
-        resolve =>
-          setTimeout(
-            resolve,
-            90
-          )
-
-      );
-
-
-      const next =
-        currentQuestionNumber(
-          doc
-        );
-
-
-      if (
-        !next ||
-        next === current
-      ) {
-
-        break;
-      }
-
-
-      current =
-        next;
-    }
-  }
-
-
-
   /* ============================================================
-     RESTAURAÇÃO COMPLETA
+     GRAVAR A NAVEGAÇÃO REAL
      ============================================================ */
 
-  async function restoreUniversal(
+  function monitorNavigation(
     frame,
-    record
+    path
   ) {
 
     let doc;
@@ -1192,41 +1880,638 @@
     }
 
 
-
     /*
-     * Espera o próprio simulado terminar
-     * de restaurar seu estado nativo.
+     * Não instala duas vezes
+     * no mesmo documento.
      */
 
-    await new Promise(
+    if (
+      doc.documentElement
+        .dataset
+        .medsimTrailV2 ===
+      '1'
+    ) {
 
+      return;
+    }
+
+
+    doc.documentElement
+      .dataset
+      .medsimTrailV2 =
+      '1';
+
+
+
+    doc.addEventListener(
+
+      'click',
+
+      event => {
+
+        const control =
+
+          event.target.closest
+
+            ? event.target.closest(
+
+                'button,' +
+                'a,' +
+                '[role="button"],' +
+                '[onclick],' +
+                'input[type="button"],' +
+                'input[type="submit"]'
+
+              )
+
+            : null;
+
+
+        if (
+          !control ||
+          shouldIgnoreControl(
+            control
+          )
+        ) {
+
+          return;
+        }
+
+
+
+        const before =
+          questionSignature(
+            doc
+          );
+
+
+        const descriptor =
+          descriptorFor(
+            control,
+            doc
+          );
+
+
+        if (!descriptor) {
+
+          return;
+        }
+
+
+
+        /*
+         * Espera o JS do simulado
+         * terminar a troca de questão.
+         */
+
+        setTimeout(
+          () => {
+
+            const after =
+              questionSignature(
+                doc
+              );
+
+
+            /*
+             * Só grava se a página realmente
+             * mudou de questão.
+             */
+
+            if (
+              !after ||
+              after === before
+            ) {
+
+              return;
+            }
+
+
+            const trail =
+              getTrail(
+                path
+              );
+
+
+            trail.push(
+              descriptor
+            );
+
+
+            setTrail(
+              path,
+              trail
+            );
+
+          },
+
+          320
+
+        );
+
+      },
+
+      true
+
+    );
+  }
+
+
+
+  /* ============================================================
+     REPRODUZIR A NAVEGAÇÃO REAL
+     ============================================================ */
+
+  async function replayTrail(
+    frame,
+    path,
+    record
+  ) {
+
+    let doc;
+
+
+    try {
+
+      doc =
+        frame.contentDocument;
+
+    } catch (_) {
+
+      return false;
+    }
+
+
+    if (
+      !doc ||
+      !doc.body
+    ) {
+
+      return false;
+    }
+
+
+
+    const target =
+      targetQuestion(
+        record
+      );
+
+
+    const trail =
+      getTrail(
+        path
+      );
+
+
+    if (
+      !trail.length
+    ) {
+
+      return false;
+    }
+
+
+
+    let current =
+      currentQuestionNumber(
+        doc
+      );
+
+
+    /*
+     * O estado nativo já colocou
+     * exatamente na questão correta.
+     */
+
+    if (
+      target &&
+      current === target
+    ) {
+
+      return true;
+    }
+
+
+
+    for (
+      let i = 0;
+      i < trail.length;
+      i++
+    ) {
+
+      const descriptor =
+        trail[i];
+
+
+      const control =
+        findByDescriptor(
+          doc,
+          descriptor
+        );
+
+
+      if (!control) {
+
+        continue;
+      }
+
+
+
+      const before =
+        questionSignature(
+          doc
+        );
+
+
+      control.click();
+
+
+
+      /*
+       * Esperamos a questão realmente mudar.
+       */
+
+      let changed =
+        false;
+
+
+      for (
+        const delay
+        of [
+          90,
+          180,
+          320,
+          520
+        ]
+      ) {
+
+        await new Promise(
+          resolve =>
+            setTimeout(
+              resolve,
+              delay
+            )
+        );
+
+
+        const after =
+          questionSignature(
+            doc
+          );
+
+
+        if (
+          after &&
+          after !== before
+        ) {
+
+          changed =
+            true;
+
+          break;
+        }
+      }
+
+
+
+      current =
+        currentQuestionNumber(
+          doc
+        );
+
+
+      if (
+        target &&
+        current === target
+      ) {
+
+        return true;
+      }
+
+
+      if (
+        !changed
+      ) {
+
+        continue;
+      }
+    }
+
+
+    return (
+
+      target
+
+        ? currentQuestionNumber(
+            doc
+          ) === target
+
+        : true
+
+    );
+  }
+
+
+
+  /* ============================================================
+     FALLBACK PARA PROGRESSOS ANTIGOS
+
+     Progressos criados antes da V2
+     ainda não possuem trilha.
+     ============================================================ */
+
+  async function fallbackAdvance(
+    frame,
+    record
+  ) {
+
+    let doc;
+
+
+    try {
+
+      doc =
+        frame.contentDocument;
+
+    } catch (_) {
+
+      return false;
+    }
+
+
+
+    const target =
+      targetQuestion(
+        record
+      );
+
+
+    if (!target) {
+
+      return false;
+    }
+
+
+
+    let current =
+      currentQuestionNumber(
+        doc
+      );
+
+
+    if (!current) {
+
+      return false;
+    }
+
+
+    if (
+      current === target
+    ) {
+
+      return true;
+    }
+
+
+
+    let guard =
+      0;
+
+
+    while (
+
+      current < target
+
+      &&
+
+      guard++ < 100
+
+    ) {
+
+      const buttons = [
+
+        ...doc.querySelectorAll(
+
+          'button,' +
+          'a,' +
+          '[role="button"],' +
+          '[onclick]'
+
+        )
+
+      ].filter(
+        visible
+      );
+
+
+      const next =
+        buttons.find(
+          element =>
+
+            /^(proxima|proximo|próxima|próximo|avancar|avançar|seguinte|next)\b/i
+
+              .test(
+
+                (
+                  element.textContent
+
+                  ||
+
+                  element.getAttribute(
+                    'aria-label'
+                  )
+
+                  ||
+
+                  ''
+                ).trim()
+
+              )
+        );
+
+
+      if (!next) {
+
+        break;
+      }
+
+
+      next.click();
+
+
+      await new Promise(
+        resolve =>
+          setTimeout(
+            resolve,
+            120
+          )
+      );
+
+
+      const nextNumber =
+        currentQuestionNumber(
+          doc
+        );
+
+
+      if (
+        !nextNumber ||
+        nextNumber === current
+      ) {
+
+        break;
+      }
+
+
+      current =
+        nextNumber;
+    }
+
+
+    return (
+      current === target
+    );
+  }
+
+
+
+  /* ============================================================
+     RESTAURAÇÃO
+     ============================================================ */
+
+  async function restoreAfterReload(
+    frame,
+    path,
+    record
+  ) {
+
+    let doc;
+
+
+    try {
+
+      doc =
+        frame.contentDocument;
+
+    } catch (_) {
+
+      return false;
+    }
+
+
+    if (
+      !doc ||
+      !doc.body
+    ) {
+
+      return false;
+    }
+
+
+
+    await new Promise(
       resolve =>
         setTimeout(
           resolve,
-          220
+          300
         )
-
     );
 
 
 
-    restoreFields(
-      doc,
-      record
-    );
+    let success =
+      false;
 
 
-
-    await navigateToQuestion(
-
-      doc,
-
-      questionNumber(
+    const target =
+      targetQuestion(
         record
-      )
+      );
 
+
+
+    /*
+     * 1. Talvez o próprio state nativo
+     * já tenha resolvido.
+     */
+
+    if (
+
+      target
+
+      &&
+
+      currentQuestionNumber(
+        doc
+      ) === target
+
+    ) {
+
+      success =
+        true;
+    }
+
+
+
+    /*
+     * 2. Nova estratégia:
+     * reproduzir a navegação REAL.
+     */
+
+    if (
+      !success
+    ) {
+
+      success =
+        await replayTrail(
+
+          frame,
+          path,
+          record
+
+        );
+    }
+
+
+
+    /*
+     * 3. Fallback para registros
+     * antigos sem trilha.
+     */
+
+    if (
+      !success
+    ) {
+
+      success =
+        await fallbackAdvance(
+
+          frame,
+          record
+
+        );
+    }
+
+
+
+    /*
+     * Respostas.
+     */
+
+    restoreFields(
+      doc,
+      record
     );
 
+
+    await new Promise(
+      resolve =>
+        setTimeout(
+          resolve,
+          120
+        )
+    );
 
 
     restoreFields(
@@ -1235,6 +2520,10 @@
     );
 
 
+
+    /*
+     * Rolagem.
+     */
 
     try {
 
@@ -1255,23 +2544,7 @@
     } catch (_) {}
 
 
-
-    /*
-     * Última passagem porque alguns
-     * simuladores remontam os campos.
-     */
-
-    setTimeout(
-
-      () =>
-        restoreFields(
-          doc,
-          record
-        ),
-
-      450
-
-    );
+    return success;
   }
 
 
@@ -1333,9 +2606,7 @@
 
         !==
 
-        keyPath(
-          path
-        )
+        keyPath(path)
 
       ) {
 
@@ -1359,8 +2630,37 @@
 
 
 
+  function reloadFrame(frame) {
+
+    try {
+
+      frame.contentWindow
+        .location
+        .reload();
+
+
+    } catch (_) {
+
+      const src =
+        frame.getAttribute(
+          'src'
+        );
+
+
+      if (src) {
+
+        frame.setAttribute(
+          'src',
+          src
+        );
+      }
+    }
+  }
+
+
+
   /* ============================================================
-     CSS DENTRO DO SIMULADO
+     CSS
      ============================================================ */
 
   function injectStyle(doc) {
@@ -1405,7 +2705,7 @@
         width:
 
           min(
-            360px,
+            390px,
             calc(100vw - 24px)
           );
 
@@ -1415,7 +2715,7 @@
 
 
         padding:
-          12px;
+          13px;
 
 
         border:
@@ -1425,7 +2725,7 @@
             99,
             102,
             241,
-            .18
+            .20
           );
 
 
@@ -1439,7 +2739,7 @@
             255,
             255,
             255,
-            .97
+            .98
           );
 
 
@@ -1475,26 +2775,22 @@
       }
 
 
-
       #${PANEL_ID}
-      .medsim-resume-inside-title {
+      .msri-title {
 
         font-size:
-          .86rem;
-
+          .88rem;
 
         font-weight:
           800;
-
 
         line-height:
           1.25;
       }
 
 
-
       #${PANEL_ID}
-      .medsim-resume-inside-meta {
+      .msri-meta {
 
         margin-top:
           4px;
@@ -1513,26 +2809,21 @@
       }
 
 
-
       #${PANEL_ID}
-      .medsim-resume-inside-actions {
+      .msri-actions {
 
         display:
           flex;
 
-
         gap:
           8px;
-
 
         margin-top:
           10px;
 
-
         flex-wrap:
           wrap;
       }
-
 
 
       #${PANEL_ID}
@@ -1579,9 +2870,8 @@
       }
 
 
-
       #${PANEL_ID}
-      .medsim-resume-inside-continue {
+      .msri-continue {
 
         border-color:
           transparent;
@@ -1601,9 +2891,8 @@
       }
 
 
-
       #${PANEL_ID}
-      .medsim-resume-inside-restart {
+      .msri-restart {
 
         color:
           #b91c1c;
@@ -1630,7 +2919,6 @@
       }
 
 
-
       #${PANEL_ID}[
         data-mode="done"
       ] {
@@ -1641,21 +2929,24 @@
             22,
             163,
             74,
-            .18
+            .22
           );
       }
 
 
-
       #${PANEL_ID}[
-        data-mode="done"
-      ]
-      .medsim-resume-inside-title {
+        data-mode="error"
+      ] {
 
-        color:
-          #15803d;
+        border-color:
+
+          rgba(
+            220,
+            38,
+            38,
+            .26
+          );
       }
-
 
 
       @media (
@@ -1677,11 +2968,10 @@
 
 
         #${PANEL_ID}
-        .medsim-resume-inside-actions {
+        .msri-actions {
 
           display:
             grid;
-
 
           grid-template-columns:
             1fr 1fr;
@@ -1708,9 +2998,7 @@
       );
 
 
-    if (
-      panel
-    ) {
+    if (panel) {
 
       panel.remove();
     }
@@ -1718,13 +3006,12 @@
 
 
 
-  /* ============================================================
-     PROGRESSO RESTAURADO
-     ============================================================ */
-
-  function showRestored(
+  function showStatus(
     doc,
-    record
+    title,
+    meta,
+    mode,
+    timeout
   ) {
 
     removePanel(
@@ -1748,19 +3035,16 @@
 
 
     panel.dataset.mode =
-      'done';
+      mode || 'done';
 
 
     panel.innerHTML = `
 
-      <div class="medsim-resume-inside-title">
-
-        Progresso restaurado
+      <div class="msri-title">
 
       </div>
 
-
-      <div class="medsim-resume-inside-meta">
+      <div class="msri-meta">
 
       </div>
 
@@ -1769,18 +3053,18 @@
 
     panel
       .querySelector(
-        '.medsim-resume-inside-meta'
+        '.msri-title'
       )
       .textContent =
+        title;
 
-        `${
 
-          questionLabel(
-            record
-          )
-
-        } · você pode continuar normalmente.`;
-
+    panel
+      .querySelector(
+        '.msri-meta'
+      )
+      .textContent =
+        meta;
 
 
     doc.body
@@ -1789,25 +3073,33 @@
       );
 
 
-    setTimeout(
-      () => {
+    if (
+      timeout !== 0
+    ) {
 
-        if (
-          panel.isConnected
-        ) {
+      setTimeout(
+        () => {
 
-          panel.remove();
-        }
+          if (
+            panel.isConnected
+          ) {
 
-      },
-      3500
-    );
+            panel.remove();
+          }
+
+        },
+
+        timeout ||
+        3800
+
+      );
+    }
   }
 
 
 
   /* ============================================================
-     PAINEL CONTINUAR / RECOMEÇAR
+     CONTINUAR / RECOMEÇAR
      ============================================================ */
 
   function showChoice(
@@ -1839,6 +3131,7 @@
     }
 
 
+
     injectStyle(
       doc
     );
@@ -1847,6 +3140,13 @@
     removePanel(
       doc
     );
+
+
+
+    const trail =
+      getTrail(
+        path
+      );
 
 
     const panel =
@@ -1861,24 +3161,23 @@
 
     panel.innerHTML = `
 
-      <div class="medsim-resume-inside-title">
+      <div class="msri-title">
 
         Há um progresso salvo neste simulado
 
       </div>
 
 
-      <div class="medsim-resume-inside-meta">
+      <div class="msri-meta">
 
       </div>
 
 
-      <div class="medsim-resume-inside-actions">
-
+      <div class="msri-actions">
 
         <button
           type="button"
-          class="medsim-resume-inside-continue">
+          class="msri-continue">
 
           Continuar de onde parei
 
@@ -1887,12 +3186,11 @@
 
         <button
           type="button"
-          class="medsim-resume-inside-restart">
+          class="msri-restart">
 
           Recomeçar
 
         </button>
-
 
       </div>
 
@@ -1902,33 +3200,37 @@
 
     panel
       .querySelector(
-        '.medsim-resume-inside-meta'
+        '.msri-meta'
       )
       .textContent =
 
-        `${
-
-          questionLabel(
-            record
-          )
-
-        } · salvo em ${
+        `${questionLabel(record)} · salvo em ${
 
           formatDate(
             record.updatedAt
           )
 
-        }`;
+        }`
+
+        +
+
+        (
+          trail.length
+
+            ? ` · ${trail.length} passo(s) de navegação registrados`
+
+            : ''
+        );
 
 
 
-    /* ========================================================
+    /* --------------------------------------------------------
        CONTINUAR
-       ======================================================== */
+       -------------------------------------------------------- */
 
     panel
       .querySelector(
-        '.medsim-resume-inside-continue'
+        '.msri-continue'
       )
       .addEventListener(
 
@@ -1937,13 +3239,32 @@
         () => {
 
           /*
-           * Coloca o state nativo de volta
-           * ANTES do reload.
+           * Se já temos a navegação real,
+           * começamos da primeira questão
+           * para conseguir reproduzi-la.
            */
 
-          applyNativeState(
-            record
-          );
+          if (
+            trail.length
+          ) {
+
+            clearNativeState(
+              doc,
+              record
+            );
+
+
+          } else {
+
+            /*
+             * Para registros antigos,
+             * ainda tentamos o state nativo.
+             */
+
+            applyNativeState(
+              record
+            );
+          }
 
 
           setAction({
@@ -1951,40 +3272,17 @@
             mode:
               'continue',
 
-            path
+            path,
+
+            useTrail:
+              trail.length > 0
 
           });
 
 
-          /*
-           * Recarrega o iframe para que
-           * o próprio simulado leia seu state.
-           */
-
-          try {
-
+          reloadFrame(
             frame
-              .contentWindow
-              .location
-              .reload();
-
-
-          } catch (_) {
-
-            const src =
-              frame.getAttribute(
-                'src'
-              );
-
-
-            if (src) {
-
-              frame.setAttribute(
-                'src',
-                src
-              );
-            }
-          }
+          );
 
         }
 
@@ -1992,13 +3290,13 @@
 
 
 
-    /* ========================================================
+    /* --------------------------------------------------------
        RECOMEÇAR
-       ======================================================== */
+       -------------------------------------------------------- */
 
     panel
       .querySelector(
-        '.medsim-resume-inside-restart'
+        '.msri-restart'
       )
       .addEventListener(
 
@@ -2015,19 +3313,19 @@
 
                 +
 
-                'O progresso em andamento será apagado, mas os resultados já concluídos serão mantidos.'
+                'O progresso em andamento será apagado, mas resultados já concluídos serão mantidos.'
 
               );
 
 
           if (!ok) {
+
             return;
           }
 
 
           /*
-           * Apaga somente state em andamento.
-           * Não toca no history.
+           * Remove o estado em andamento.
            */
 
           clearNativeState(
@@ -2037,7 +3335,16 @@
 
 
           /*
-           * Apaga a retomada universal.
+           * Remove a trilha.
+           */
+
+          clearTrail(
+            path
+          );
+
+
+          /*
+           * Remove o registro de retomada.
            */
 
           removeRecord(
@@ -2056,33 +3363,12 @@
 
 
           /*
-           * Recarrega sem state.
+           * Reabre do zero.
            */
 
-          try {
-
+          reloadFrame(
             frame
-              .contentWindow
-              .location
-              .reload();
-
-
-          } catch (_) {
-
-            const src =
-              frame.getAttribute(
-                'src'
-              );
-
-
-            if (src) {
-
-              frame.setAttribute(
-                'src',
-                src
-              );
-            }
-          }
+          );
 
         }
 
@@ -2112,7 +3398,9 @@
           'src'
         )
 
-        || ''
+        ||
+
+        ''
 
       );
 
@@ -2133,6 +3421,7 @@
 
       return;
     }
+
 
 
     let doc;
@@ -2160,8 +3449,16 @@
 
 
     /*
-     * Houve uma ação antes do reload?
+     * A partir daqui começamos a
+     * registrar a navegação REAL.
      */
+
+    monitorNavigation(
+      frame,
+      path
+    );
+
+
 
     const action =
       takeAction(
@@ -2176,9 +3473,9 @@
 
 
 
-    /* ========================================================
-       RECOMEÇOU
-       ======================================================== */
+    /* --------------------------------------------------------
+       RECOMEÇAR
+       -------------------------------------------------------- */
 
     if (
       action &&
@@ -2196,9 +3493,9 @@
 
 
 
-    /* ========================================================
-       CONTINUOU
-       ======================================================== */
+    /* --------------------------------------------------------
+       CONTINUAR
+       -------------------------------------------------------- */
 
     if (
 
@@ -2216,35 +3513,72 @@
     ) {
 
       /*
-       * Garante novamente state nativo.
+       * Registro antigo sem trilha:
+       * tenta state nativo.
        */
 
-      applyNativeState(
-        record
-      );
+      if (
+        !action.useTrail
+      ) {
+
+        applyNativeState(
+          record
+        );
+      }
 
 
-      /*
-       * Complementa com campos
-       * e posição/questão.
-       */
 
-      await restoreUniversal(
+      const success =
+        await restoreAfterReload(
 
-        frame,
+          frame,
+          path,
+          record
 
-        record
-
-      );
+        );
 
 
-      showRestored(
 
-        doc,
+      if (
+        success
+      ) {
 
-        record
+        showStatus(
 
-      );
+          doc,
+
+          'Progresso restaurado',
+
+          `${questionLabel(record)} · continue normalmente.`,
+
+          'done',
+
+          3800
+
+        );
+
+
+      } else {
+
+        /*
+         * Não mentimos dizendo que voltou
+         * se não conseguimos confirmar.
+         */
+
+        showStatus(
+
+          doc,
+
+          'Não consegui voltar automaticamente à questão salva',
+
+          'As respostas salvas foram restauradas quando possível. A partir desta versão, a navegação real também passa a ser registrada para tornar as próximas retomadas mais precisas.',
+
+          'error',
+
+          7000
+
+        );
+      }
 
 
       return;
@@ -2252,9 +3586,9 @@
 
 
 
-    /* ========================================================
-       EXISTE PROGRESSO
-       ======================================================== */
+    /* --------------------------------------------------------
+       EXISTE PROGRESSO SALVO
+       -------------------------------------------------------- */
 
     if (
       record
@@ -2263,9 +3597,7 @@
       showChoice(
 
         frame,
-
         path,
-
         record
 
       );
@@ -2285,24 +3617,21 @@
      IFRAMES
      ============================================================ */
 
-  function registerFrame(
-    frame
-  ) {
+  function registerFrame(frame) {
 
     if (
-      frame.dataset
-        .medsimResumeInside ===
-      '1'
+      registered.has(
+        frame
+      )
     ) {
 
       return;
     }
 
 
-    frame.dataset
-      .medsimResumeInside =
-      '1';
-
+    registered.add(
+      frame
+    );
 
 
     frame.addEventListener(
@@ -2319,7 +3648,7 @@
             );
 
           },
-          120
+          140
         );
 
       }
@@ -2327,19 +3656,13 @@
     );
 
 
-
     try {
 
       if (
-
-        frame.contentDocument
-
-        &&
-
+        frame.contentDocument &&
         frame.contentDocument
           .readyState ===
           'complete'
-
       ) {
 
         setTimeout(
@@ -2350,7 +3673,7 @@
             );
 
           },
-          120
+          140
         );
       }
 
@@ -2366,6 +3689,7 @@
       .querySelectorAll(
         'iframe'
       )
+
       .forEach(
         registerFrame
       );
@@ -2383,9 +3707,8 @@
 
 
     /*
-     * Não observa o DOM inteiro.
-     * Apenas verifica se surgiu
-     * algum novo iframe.
+     * Apenas detecta novos iframes.
+     * Não mexe na estrutura do Hub.
      */
 
     setInterval(
@@ -2399,7 +3722,7 @@
 
     console.info(
 
-      '[MedSim] Interface interna de retomada v1 ativa.'
+      '[MedSim] Retomar simulado interno v2 ativo.'
 
     );
   }
