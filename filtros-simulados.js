@@ -3037,52 +3037,44 @@
 
   function findSearch() {
 
-    const inputs = [
-
-      ...document.querySelectorAll(
-        'input'
-      )
-
-    ];
-
-
-    return (
-
-      inputs.find(
-        input => {
-
-          const hint =
-            txt(`
-
-              ${input.type}
-
-              ${input.placeholder}
-
-              ${input.getAttribute('aria-label')}
-
-              ${input.id}
-
-              ${input.className}
-
-            `);
-
-
-          return (
-
-            /search|buscar|pesquisar|simulado/
-              .test(
-                hint
-              )
-
-          );
-        }
-      )
-
-      ||
-
-      null
-
+  /*
+   * Primeiro procura exatamente a barra
+   * existente no MedSim.
+   */
+  const exact =
+    document.querySelector(
+      'input[placeholder="Pesquisar simulado..."]'
     );
+
+  if (exact) {
+    return exact;
+  }
+
+
+  /*
+   * Segurança caso o texto seja alterado
+   * ligeiramente no futuro.
+   */
+  const inputs =
+    [...document.querySelectorAll('input')];
+
+  return (
+    inputs.find(input => {
+
+      const placeholder =
+        (input.placeholder || '')
+          .toLowerCase()
+          .trim();
+
+      return (
+        placeholder.includes('pesquisar simulado') ||
+        placeholder.includes('buscar simulado')
+      );
+
+    })
+
+    || null
+  );
   }
 
 
